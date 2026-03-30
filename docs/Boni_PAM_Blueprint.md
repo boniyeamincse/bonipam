@@ -670,6 +670,7 @@ boni-pam/
 - **TASK-016: Asset Registration API**  
   Description: Implement asset onboarding endpoint with connection metadata validation.  
   Module: Asset Management
+  Status: Done
 
 - **TASK-017: Asset Tagging and Grouping**  
   Description: Support environment, owner, and criticality tags for policy targeting.  
