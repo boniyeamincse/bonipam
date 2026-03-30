@@ -19,9 +19,26 @@ func NewAuthHandler(authService *service.AuthService) *AuthHandler {
 func (h *AuthHandler) RegisterRoutes(group *gin.RouterGroup) {
 	auth := group.Group("/auth")
 	auth.POST("/sso/callback", h.SSOCallback)
+	auth.POST("/mfa/challenge", h.CreateMFAChallenge)
 	auth.POST("/mfa/verify", h.VerifyMFA)
 	auth.POST("/token/refresh", h.RefreshToken)
 	auth.POST("/logout", h.Logout)
+}
+
+func (h *AuthHandler) CreateMFAChallenge(c *gin.Context) {
+	var req domain.MFAChallengeRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid mfa challenge request")
+		return
+	}
+
+	challenge, err := h.authService.CreateMFAChallenge(req)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "MFA_CHALLENGE_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, challenge)
 }
 
 func (h *AuthHandler) SSOCallback(c *gin.Context) {

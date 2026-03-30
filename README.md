@@ -34,6 +34,7 @@ Health checks:
 Auth service (`:8081`):
 
 - `POST /api/v1/auth/sso/callback`
+- `POST /api/v1/auth/mfa/challenge`
 - `POST /api/v1/auth/mfa/verify`
 - `POST /api/v1/auth/token/refresh`
 - `POST /api/v1/auth/logout`

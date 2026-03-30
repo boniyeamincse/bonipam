@@ -605,6 +605,7 @@ boni-pam/
 - **TASK-003: Implement MFA Challenge API**  
   Description: Add endpoints for TOTP/WebAuthn challenge generation and verification.  
   Module: Auth Service
+  Status: Done
 
 - **TASK-004: Build JWT/Refresh Token Service**  
   Description: Generate signed access tokens and rotate refresh tokens securely.  
