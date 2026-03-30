@@ -12,12 +12,18 @@ import (
 )
 
 type AssetService struct {
-	mu     sync.RWMutex
-	assets map[string]domain.Asset
+	mu                 sync.RWMutex
+	assets             map[string]domain.Asset
+	ownershipTransfers map[string]domain.AssetOwnershipTransfer
+	auditEvents        map[string][]domain.AssetAuditEvent
 }
 
 func NewAssetService() *AssetService {
-	return &AssetService{assets: make(map[string]domain.Asset)}
+	return &AssetService{
+		assets:             make(map[string]domain.Asset),
+		ownershipTransfers: make(map[string]domain.AssetOwnershipTransfer),
+		auditEvents:        make(map[string][]domain.AssetAuditEvent),
+	}
 }
 
 func (s *AssetService) CreateAsset(req domain.CreateAssetRequest) (domain.Asset, error) {
@@ -198,6 +204,157 @@ func (s *AssetService) TestConnection(assetID string, timeoutSeconds int) (domai
 	}, nil
 }
 
+func (s *AssetService) AssignOwner(assetID string, req domain.AssignAssetOwnerRequest) (domain.Asset, error) {
+	owner := strings.TrimSpace(req.Owner)
+	assignedBy := strings.TrimSpace(req.AssignedBy)
+	if owner == "" || assignedBy == "" {
+		return domain.Asset{}, fmt.Errorf("owner and assigned_by are required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	asset, ok := s.assets[assetID]
+	if !ok {
+		return domain.Asset{}, fmt.Errorf("asset not found")
+	}
+
+	fromOwner := asset.Owner
+	asset.Owner = owner
+	asset.UpdatedAt = time.Now().UTC()
+	s.assets[assetID] = asset
+
+	s.recordAuditEventLocked(assetID, "owner_assigned", assignedBy, "asset owner assigned", map[string]interface{}{
+		"from_owner": fromOwner,
+		"to_owner":   owner,
+		"reason":     strings.TrimSpace(req.Reason),
+	})
+
+	return asset, nil
+}
+
+func (s *AssetService) RequestOwnershipTransfer(assetID string, req domain.RequestAssetOwnershipTransferRequest) (domain.AssetOwnershipTransfer, error) {
+	newOwner := strings.TrimSpace(req.NewOwner)
+	requestedBy := strings.TrimSpace(req.RequestedBy)
+	if newOwner == "" || requestedBy == "" {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("new_owner and requested_by are required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	asset, ok := s.assets[assetID]
+	if !ok {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("asset not found")
+	}
+	if strings.TrimSpace(asset.Owner) == "" {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("asset has no current owner; use owner assignment")
+	}
+	if strings.EqualFold(asset.Owner, newOwner) {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("new owner must differ from current owner")
+	}
+
+	now := time.Now().UTC()
+	transfer := domain.AssetOwnershipTransfer{
+		ID:          "trf-" + uuid.NewString(),
+		AssetID:     assetID,
+		FromOwner:   asset.Owner,
+		ToOwner:     newOwner,
+		RequestedBy: requestedBy,
+		Reason:      strings.TrimSpace(req.Reason),
+		Status:      domain.AssetTransferStatusPending,
+		RequestedAt: now,
+	}
+
+	s.ownershipTransfers[transfer.ID] = transfer
+	s.recordAuditEventLocked(assetID, "ownership_transfer_requested", requestedBy, "ownership transfer requested", map[string]interface{}{
+		"transfer_id": transfer.ID,
+		"from_owner":  transfer.FromOwner,
+		"to_owner":    transfer.ToOwner,
+	})
+
+	return transfer, nil
+}
+
+func (s *AssetService) ReviewOwnershipTransfer(transferID string, req domain.ReviewAssetOwnershipTransferRequest) (domain.AssetOwnershipTransfer, error) {
+	reviewedBy := strings.TrimSpace(req.ReviewedBy)
+	if reviewedBy == "" {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("reviewed_by is required")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	transfer, ok := s.ownershipTransfers[transferID]
+	if !ok {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("ownership transfer not found")
+	}
+	if transfer.Status != domain.AssetTransferStatusPending {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("ownership transfer already reviewed")
+	}
+
+	now := time.Now().UTC()
+	transfer.ReviewedBy = reviewedBy
+	transfer.Comment = strings.TrimSpace(req.Comment)
+	transfer.ReviewedAt = &now
+
+	asset, ok := s.assets[transfer.AssetID]
+	if !ok {
+		return domain.AssetOwnershipTransfer{}, fmt.Errorf("asset not found")
+	}
+
+	eventType := "ownership_transfer_rejected"
+	eventMessage := "ownership transfer rejected"
+	if req.Approved {
+		transfer.Status = domain.AssetTransferStatusApproved
+		asset.Owner = transfer.ToOwner
+		asset.UpdatedAt = now
+		s.assets[asset.ID] = asset
+		eventType = "ownership_transfer_approved"
+		eventMessage = "ownership transfer approved"
+	} else {
+		transfer.Status = domain.AssetTransferStatusRejected
+	}
+
+	s.ownershipTransfers[transferID] = transfer
+	s.recordAuditEventLocked(transfer.AssetID, eventType, reviewedBy, eventMessage, map[string]interface{}{
+		"transfer_id": transfer.ID,
+		"from_owner":  transfer.FromOwner,
+		"to_owner":    transfer.ToOwner,
+		"comment":     transfer.Comment,
+	})
+
+	return transfer, nil
+}
+
+func (s *AssetService) ListOwnershipTransfers(assetID string) []domain.AssetOwnershipTransfer {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make([]domain.AssetOwnershipTransfer, 0)
+	for _, transfer := range s.ownershipTransfers {
+		if transfer.AssetID == assetID {
+			result = append(result, transfer)
+		}
+	}
+
+	sort.Slice(result, func(i, j int) bool {
+		return result[i].RequestedAt.Before(result[j].RequestedAt)
+	})
+
+	return result
+}
+
+func (s *AssetService) ListAssetAuditEvents(assetID string) []domain.AssetAuditEvent {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	events := s.auditEvents[assetID]
+	result := make([]domain.AssetAuditEvent, len(events))
+	copy(result, events)
+	return result
+}
+
 func defaultPortForType(assetType string) int {
 	switch assetType {
 	case "ssh":
@@ -309,4 +466,18 @@ func simulateLatency(host string, port int, timeoutSeconds int) int {
 		seed = -seed
 	}
 	return 10 + (seed % 120)
+}
+
+func (s *AssetService) recordAuditEventLocked(assetID, eventType, actor, message string, metadata map[string]interface{}) {
+	event := domain.AssetAuditEvent{
+		ID:        "evt-" + uuid.NewString(),
+		AssetID:   assetID,
+		Type:      eventType,
+		Actor:     actor,
+		Message:   message,
+		Metadata:  metadata,
+		Timestamp: time.Now().UTC(),
+	}
+
+	s.auditEvents[assetID] = append(s.auditEvents[assetID], event)
 }

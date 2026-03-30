@@ -2,6 +2,14 @@ package domain
 
 import "time"
 
+type AssetTransferStatus string
+
+const (
+	AssetTransferStatusPending  AssetTransferStatus = "pending"
+	AssetTransferStatusApproved AssetTransferStatus = "approved"
+	AssetTransferStatusRejected AssetTransferStatus = "rejected"
+)
+
 type Asset struct {
 	ID                 string                 `json:"id"`
 	Name               string                 `json:"name"`
@@ -48,4 +56,46 @@ type TestAssetConnectionResult struct {
 	Message      string    `json:"message"`
 	Protocol     string    `json:"protocol"`
 	TimeoutUsedS int       `json:"timeout_used_seconds"`
+}
+
+type AssignAssetOwnerRequest struct {
+	Owner      string `json:"owner" binding:"required"`
+	AssignedBy string `json:"assigned_by" binding:"required"`
+	Reason     string `json:"reason"`
+}
+
+type RequestAssetOwnershipTransferRequest struct {
+	NewOwner    string `json:"new_owner" binding:"required"`
+	RequestedBy string `json:"requested_by" binding:"required"`
+	Reason      string `json:"reason"`
+}
+
+type ReviewAssetOwnershipTransferRequest struct {
+	Approved   bool   `json:"approved"`
+	ReviewedBy string `json:"reviewed_by" binding:"required"`
+	Comment    string `json:"comment"`
+}
+
+type AssetOwnershipTransfer struct {
+	ID          string              `json:"id"`
+	AssetID     string              `json:"asset_id"`
+	FromOwner   string              `json:"from_owner"`
+	ToOwner     string              `json:"to_owner"`
+	RequestedBy string              `json:"requested_by"`
+	ReviewedBy  string              `json:"reviewed_by,omitempty"`
+	Reason      string              `json:"reason,omitempty"`
+	Comment     string              `json:"comment,omitempty"`
+	Status      AssetTransferStatus `json:"status"`
+	RequestedAt time.Time           `json:"requested_at"`
+	ReviewedAt  *time.Time          `json:"reviewed_at,omitempty"`
+}
+
+type AssetAuditEvent struct {
+	ID        string                 `json:"id"`
+	AssetID   string                 `json:"asset_id"`
+	Type      string                 `json:"type"`
+	Actor     string                 `json:"actor"`
+	Message   string                 `json:"message"`
+	Metadata  map[string]interface{} `json:"metadata,omitempty"`
+	Timestamp time.Time              `json:"timestamp"`
 }

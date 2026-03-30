@@ -23,6 +23,11 @@ func (h *AssetHandler) RegisterRoutes(group *gin.RouterGroup) {
 	assets.GET("/:assetId", h.GetAsset)
 	assets.PUT("/:assetId/tags", h.UpdateAssetTagging)
 	assets.POST("/:assetId/test-connection", h.TestConnection)
+	assets.POST("/:assetId/owner/assign", h.AssignOwner)
+	assets.POST("/:assetId/owner/transfers", h.RequestOwnershipTransfer)
+	assets.GET("/:assetId/owner/transfers", h.ListOwnershipTransfers)
+	assets.POST("/:assetId/owner/transfers/:transferId/review", h.ReviewOwnershipTransfer)
+	assets.GET("/:assetId/audit-events", h.ListAuditEvents)
 }
 
 func (h *AssetHandler) CreateAsset(c *gin.Context) {
@@ -92,4 +97,62 @@ func (h *AssetHandler) TestConnection(c *gin.Context) {
 	}
 
 	RespondOK(c, http.StatusOK, result)
+}
+
+func (h *AssetHandler) AssignOwner(c *gin.Context) {
+	var req domain.AssignAssetOwnerRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid owner assignment request")
+		return
+	}
+
+	asset, err := h.assetService.AssignOwner(c.Param("assetId"), req)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "ASSET_OWNER_ASSIGN_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, asset)
+}
+
+func (h *AssetHandler) RequestOwnershipTransfer(c *gin.Context) {
+	var req domain.RequestAssetOwnershipTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid ownership transfer request")
+		return
+	}
+
+	transfer, err := h.assetService.RequestOwnershipTransfer(c.Param("assetId"), req)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "ASSET_OWNER_TRANSFER_REQUEST_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusAccepted, transfer)
+}
+
+func (h *AssetHandler) ReviewOwnershipTransfer(c *gin.Context) {
+	var req domain.ReviewAssetOwnershipTransferRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid ownership transfer review request")
+		return
+	}
+
+	transfer, err := h.assetService.ReviewOwnershipTransfer(c.Param("transferId"), req)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "ASSET_OWNER_TRANSFER_REVIEW_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, transfer)
+}
+
+func (h *AssetHandler) ListOwnershipTransfers(c *gin.Context) {
+	transfers := h.assetService.ListOwnershipTransfers(c.Param("assetId"))
+	RespondOK(c, http.StatusOK, transfers)
+}
+
+func (h *AssetHandler) ListAuditEvents(c *gin.Context) {
+	events := h.assetService.ListAssetAuditEvents(c.Param("assetId"))
+	RespondOK(c, http.StatusOK, events)
 }

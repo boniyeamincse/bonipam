@@ -685,6 +685,7 @@ boni-pam/
 - **TASK-019: Asset Ownership Workflow**  
   Description: Implement owner assignment and transfer with approvals and audit events.  
   Module: Asset Management
+  Status: Done
 
 - **TASK-020: Asset Import Pipeline**  
   Description: Add CSV/API bulk asset import with deduplication and validation.  

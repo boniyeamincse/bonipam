@@ -183,3 +183,74 @@ func TestAssetService_TestConnection(t *testing.T) {
 		}
 	})
 }
+
+func TestAssetService_OwnershipWorkflow(t *testing.T) {
+	s := NewAssetService()
+
+	asset, err := s.CreateAsset(domain.CreateAssetRequest{
+		Name: "owner-test-node",
+		Type: "ssh",
+		Host: "owner.internal.local",
+		ConnectionMetadata: map[string]interface{}{
+			"username":    "ops",
+			"auth_method": "key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAsset returned error: %v", err)
+	}
+
+	assigned, err := s.AssignOwner(asset.ID, domain.AssignAssetOwnerRequest{
+		Owner:      "alice",
+		AssignedBy: "admin",
+		Reason:     "initial ownership",
+	})
+	if err != nil {
+		t.Fatalf("AssignOwner returned error: %v", err)
+	}
+	if assigned.Owner != "alice" {
+		t.Fatalf("expected owner alice, got %s", assigned.Owner)
+	}
+
+	transfer, err := s.RequestOwnershipTransfer(asset.ID, domain.RequestAssetOwnershipTransferRequest{
+		NewOwner:    "bob",
+		RequestedBy: "alice",
+		Reason:      "team rotation",
+	})
+	if err != nil {
+		t.Fatalf("RequestOwnershipTransfer returned error: %v", err)
+	}
+	if transfer.Status != domain.AssetTransferStatusPending {
+		t.Fatalf("expected pending transfer, got %s", transfer.Status)
+	}
+
+	reviewed, err := s.ReviewOwnershipTransfer(transfer.ID, domain.ReviewAssetOwnershipTransferRequest{
+		Approved:   true,
+		ReviewedBy: "manager-1",
+		Comment:    "approved",
+	})
+	if err != nil {
+		t.Fatalf("ReviewOwnershipTransfer returned error: %v", err)
+	}
+	if reviewed.Status != domain.AssetTransferStatusApproved {
+		t.Fatalf("expected approved transfer, got %s", reviewed.Status)
+	}
+
+	updatedAsset, err := s.GetAsset(asset.ID)
+	if err != nil {
+		t.Fatalf("GetAsset returned error: %v", err)
+	}
+	if updatedAsset.Owner != "bob" {
+		t.Fatalf("expected owner bob after approval, got %s", updatedAsset.Owner)
+	}
+
+	transfers := s.ListOwnershipTransfers(asset.ID)
+	if len(transfers) != 1 {
+		t.Fatalf("expected one ownership transfer, got %d", len(transfers))
+	}
+
+	events := s.ListAssetAuditEvents(asset.ID)
+	if len(events) < 3 {
+		t.Fatalf("expected at least 3 audit events, got %d", len(events))
+	}
+}
