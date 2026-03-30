@@ -63,3 +63,17 @@ type UpdatePolicyRequest struct {
 	Name       string            `json:"name"`
 	Definition *PolicyDefinition `json:"definition"`
 }
+
+type PolicyEvaluationRequest struct {
+	Subject    string                 `json:"subject" binding:"required"`
+	Resource   string                 `json:"resource" binding:"required"`
+	Action     string                 `json:"action" binding:"required"`
+	Attributes map[string]interface{} `json:"attributes"`
+}
+
+type PolicyEvaluationResponse struct {
+	PolicyID      uuid.UUID `json:"policy_id"`
+	Decision      string    `json:"decision"`
+	Obligations   []string  `json:"obligations,omitempty"`
+	MatchedRuleID []string  `json:"matched_rule_ids,omitempty"`
+}

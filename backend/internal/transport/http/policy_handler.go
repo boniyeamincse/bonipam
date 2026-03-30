@@ -22,6 +22,7 @@ func (h *PolicyHandler) RegisterRoutes(group *gin.RouterGroup) {
 	policies.GET("", h.ListPolicies)
 	policies.GET("/:policyId", h.GetPolicy)
 	policies.PUT("/:policyId", h.UpdatePolicy)
+	policies.POST("/:policyId/evaluate", h.EvaluatePolicy)
 }
 
 func (h *PolicyHandler) CreatePolicy(c *gin.Context) {
@@ -68,4 +69,20 @@ func (h *PolicyHandler) UpdatePolicy(c *gin.Context) {
 	}
 
 	RespondOK(c, http.StatusOK, policy)
+}
+
+func (h *PolicyHandler) EvaluatePolicy(c *gin.Context) {
+	var req domain.PolicyEvaluationRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid policy evaluation request")
+		return
+	}
+
+	result, err := h.policyService.EvaluatePolicy(c.Request.Context(), c.Param("policyId"), req)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "POLICY_EVALUATION_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, result)
 }

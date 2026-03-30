@@ -655,6 +655,7 @@ boni-pam/
 - **TASK-013: Policy Evaluation Runtime**  
   Description: Build deterministic evaluator returning allow/deny and obligations.  
   Module: Policy Engine
+  Status: Done
 
 - **TASK-014: Policy Version Publish Workflow**  
   Description: Add draft, publish, rollback mechanics for policy deployment.  
