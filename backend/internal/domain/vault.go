@@ -71,7 +71,39 @@ type CredentialLeaseRecord struct {
 	IssuedAt     time.Time         `json:"issued_at"`
 	ExpiresAt    time.Time         `json:"expires_at"`
 	Revoked      bool              `json:"revoked"`
+	RevokedAt    *time.Time        `json:"revoked_at,omitempty"`
+	RevokeReason string            `json:"revoke_reason,omitempty"`
 	LeaseSeconds int               `json:"lease_seconds"`
+}
+
+type RevokeLeaseRequest struct {
+	Reason string `json:"reason"`
+}
+
+type RevokeByTargetRequest struct {
+	TargetID string `json:"target_id" binding:"required"`
+	Reason   string `json:"reason"`
+}
+
+type LeaseStatusResponse struct {
+	LeaseID      string            `json:"lease_id"`
+	TargetType   string            `json:"target_type"`
+	TargetID     string            `json:"target_id"`
+	Username     string            `json:"username"`
+	Role         string            `json:"role"`
+	Metadata     map[string]string `json:"metadata,omitempty"`
+	IssuedAt     time.Time         `json:"issued_at"`
+	ExpiresAt    time.Time         `json:"expires_at"`
+	Status       string            `json:"status"` // active | expired | revoked
+	Revoked      bool              `json:"revoked"`
+	RevokedAt    *time.Time        `json:"revoked_at,omitempty"`
+	RevokeReason string            `json:"revoke_reason,omitempty"`
+	LeaseSeconds int               `json:"lease_seconds"`
+}
+
+type BulkRevokeResult struct {
+	Revoked  int    `json:"revoked"`
+	TargetID string `json:"target_id"`
 }
 
 // RotationPolicy defines periodic rotation rules for a target.

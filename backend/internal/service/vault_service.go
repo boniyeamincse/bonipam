@@ -105,6 +105,87 @@ func (s *VaultService) IssueCredential(req domain.IssueCredentialRequest) (domai
 	}, nil
 }
 
+// GetLeaseStatus returns the current status of a credential lease.
+func (s *VaultService) GetLeaseStatus(leaseID string) (domain.LeaseStatusResponse, error) {
+	s.mu.RLock()
+	lease, ok := s.leases[leaseID]
+	s.mu.RUnlock()
+	if !ok {
+		return domain.LeaseStatusResponse{}, fmt.Errorf("lease not found")
+	}
+	return toLeaseStatusResponse(lease), nil
+}
+
+// RevokeLease marks a single lease as revoked immediately.
+func (s *VaultService) RevokeLease(leaseID, reason string) error {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	lease, ok := s.leases[leaseID]
+	if !ok {
+		return fmt.Errorf("lease not found")
+	}
+	if lease.Revoked {
+		return fmt.Errorf("lease already revoked")
+	}
+	now := time.Now().UTC()
+	lease.Revoked = true
+	lease.RevokedAt = &now
+	lease.RevokeReason = strings.TrimSpace(reason)
+	s.leases[leaseID] = lease
+	return nil
+}
+
+// RevokeLeasesByTarget revokes all active leases for a given target asset.
+func (s *VaultService) RevokeLeasesByTarget(targetID, reason string) (domain.BulkRevokeResult, error) {
+	targetID = strings.TrimSpace(targetID)
+	if targetID == "" {
+		return domain.BulkRevokeResult{}, fmt.Errorf("target_id is required")
+	}
+
+	now := time.Now().UTC()
+	trimmedReason := strings.TrimSpace(reason)
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	count := 0
+	for id, lease := range s.leases {
+		if strings.EqualFold(lease.TargetID, targetID) && !lease.Revoked {
+			lease.Revoked = true
+			lease.RevokedAt = &now
+			lease.RevokeReason = trimmedReason
+			s.leases[id] = lease
+			count++
+		}
+	}
+
+	return domain.BulkRevokeResult{Revoked: count, TargetID: targetID}, nil
+}
+
+func toLeaseStatusResponse(l domain.CredentialLeaseRecord) domain.LeaseStatusResponse {
+	status := "active"
+	if l.Revoked {
+		status = "revoked"
+	} else if time.Now().UTC().After(l.ExpiresAt) {
+		status = "expired"
+	}
+	return domain.LeaseStatusResponse{
+		LeaseID:      l.LeaseID,
+		TargetType:   l.TargetType,
+		TargetID:     l.TargetID,
+		Username:     l.Username,
+		Role:         l.Role,
+		Metadata:     l.Metadata,
+		IssuedAt:     l.IssuedAt,
+		ExpiresAt:    l.ExpiresAt,
+		Status:       status,
+		Revoked:      l.Revoked,
+		RevokedAt:    l.RevokedAt,
+		RevokeReason: l.RevokeReason,
+		LeaseSeconds: l.LeaseSeconds,
+	}
+}
+
 // CreateRotationPolicy registers a new rotation policy for a target.
 func (s *VaultService) CreateRotationPolicy(req domain.CreateRotationPolicyRequest) (domain.RotationPolicyResponse, error) {
 	targetType := strings.ToLower(strings.TrimSpace(req.TargetType))

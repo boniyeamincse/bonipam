@@ -219,3 +219,124 @@ func TestVaultService_TriggerRotation(t *testing.T) {
 		t.Fatalf("expected last_rotated_at to be set after trigger")
 	}
 }
+
+func TestVaultService_GetLeaseStatus(t *testing.T) {
+	s, err := NewVaultService("test-master-key-123456")
+	if err != nil {
+		t.Fatalf("NewVaultService returned error: %v", err)
+	}
+
+	issued, err := s.IssueCredential(domain.IssueCredentialRequest{
+		TargetType: "database",
+		TargetID:   "db-status-01",
+		Role:       "readonly",
+		TTLSeconds: 300,
+	})
+	if err != nil {
+		t.Fatalf("IssueCredential returned error: %v", err)
+	}
+
+	st, err := s.GetLeaseStatus(issued.LeaseID)
+	if err != nil {
+		t.Fatalf("GetLeaseStatus returned error: %v", err)
+	}
+	if st.Status != "active" {
+		t.Fatalf("expected status active, got %s", st.Status)
+	}
+	if st.Revoked {
+		t.Fatalf("expected lease to not be revoked")
+	}
+
+	_, err = s.GetLeaseStatus("nonexistent-lease-id")
+	if err == nil {
+		t.Fatalf("expected not found error")
+	}
+}
+
+func TestVaultService_RevokeLease(t *testing.T) {
+	s, err := NewVaultService("test-master-key-123456")
+	if err != nil {
+		t.Fatalf("NewVaultService returned error: %v", err)
+	}
+
+	issued, err := s.IssueCredential(domain.IssueCredentialRequest{
+		TargetType: "ssh",
+		TargetID:   "bastion-revoke-01",
+		Role:       "operator",
+		TTLSeconds: 300,
+	})
+	if err != nil {
+		t.Fatalf("IssueCredential returned error: %v", err)
+	}
+
+	err = s.RevokeLease(issued.LeaseID, "session terminated")
+	if err != nil {
+		t.Fatalf("RevokeLease returned error: %v", err)
+	}
+
+	st, err := s.GetLeaseStatus(issued.LeaseID)
+	if err != nil {
+		t.Fatalf("GetLeaseStatus after revoke returned error: %v", err)
+	}
+	if st.Status != "revoked" {
+		t.Fatalf("expected status revoked, got %s", st.Status)
+	}
+	if !st.Revoked {
+		t.Fatalf("expected revoked to be true")
+	}
+	if st.RevokedAt == nil || st.RevokedAt.IsZero() {
+		t.Fatalf("expected revoked_at to be set")
+	}
+	if st.RevokeReason != "session terminated" {
+		t.Fatalf("expected revoke reason to match, got %q", st.RevokeReason)
+	}
+
+	// Revoking an already revoked lease should fail
+	err = s.RevokeLease(issued.LeaseID, "again")
+	if err == nil {
+		t.Fatalf("expected already revoked error")
+	}
+}
+
+func TestVaultService_RevokeLeasesByTarget(t *testing.T) {
+	s, err := NewVaultService("test-master-key-123456")
+	if err != nil {
+		t.Fatalf("NewVaultService returned error: %v", err)
+	}
+
+	target := "bulk-target-01"
+	for i := 0; i < 3; i++ {
+		_, err = s.IssueCredential(domain.IssueCredentialRequest{
+			TargetType: "database",
+			TargetID:   target,
+			Role:       "readonly",
+			TTLSeconds: 300,
+		})
+		if err != nil {
+			t.Fatalf("IssueCredential[%d] returned error: %v", i, err)
+		}
+	}
+
+	result, err := s.RevokeLeasesByTarget(target, "policy trigger")
+	if err != nil {
+		t.Fatalf("RevokeLeasesByTarget returned error: %v", err)
+	}
+	if result.Revoked != 3 {
+		t.Fatalf("expected 3 leases revoked, got %d", result.Revoked)
+	}
+	if result.TargetID != target {
+		t.Fatalf("expected target id to match")
+	}
+
+	// Second call should revoke 0 (all already revoked)
+	result2, err := s.RevokeLeasesByTarget(target, "duplicate")
+	if err != nil {
+		t.Fatalf("second RevokeLeasesByTarget returned error: %v", err)
+	}
+	if result2.Revoked != 0 {
+		t.Fatalf("expected 0 additional revocations, got %d", result2.Revoked)
+	}
+}
+
+// Suppress unused import warning for time package (used in other tests).
+var _ = time.Now

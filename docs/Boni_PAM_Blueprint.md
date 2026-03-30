@@ -710,6 +710,7 @@ boni-pam/
 - **TASK-024: Lease Revocation Mechanism**  
   Description: Revoke active credential leases on session termination or policy trigger.  
   Module: Vault Service
+  Status: Done
 
 - **TASK-025: KMS Integration Adapter**  
   Description: Integrate external KMS/HSM for key generation and envelope key wrapping.  
