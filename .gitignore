@@ -2,10 +2,15 @@
 bin/
 *.exe
 *.out
+backend/auth-service
+backend/api-gateway
 
 # Build
 build/
 dist/
+
+# Dependencies
+node_modules/
 
 # Env
 .env

@@ -10,20 +10,46 @@ import (
 
 type AuthHandler struct {
 	authService *service.AuthService
+	userService *service.UserService
 }
 
-func NewAuthHandler(authService *service.AuthService) *AuthHandler {
-	return &AuthHandler{authService: authService}
+func NewAuthHandler(authService *service.AuthService, userService *service.UserService) *AuthHandler {
+	return &AuthHandler{
+		authService: authService,
+		userService: userService,
+	}
 }
 
 func (h *AuthHandler) RegisterRoutes(group *gin.RouterGroup) {
 	auth := group.Group("/auth")
+	auth.POST("/login", h.Login)
 	auth.POST("/sso/callback", h.SSOCallback)
 	auth.POST("/mfa/challenge", h.CreateMFAChallenge)
 	auth.POST("/mfa/verify", h.VerifyMFA)
 	auth.POST("/token/refresh", h.RefreshToken)
 	auth.POST("/sessions/revoke", h.RevokeSessions)
 	auth.POST("/logout", h.Logout)
+}
+
+func (h *AuthHandler) Login(c *gin.Context) {
+	var req domain.LoginRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid login request")
+		return
+	}
+
+	session, err := h.authService.Login(req, h.userService)
+	if err != nil {
+		RespondError(c, http.StatusUnauthorized, "AUTH_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, gin.H{
+		"user_id":       session.UserID,
+		"access_token":  session.AccessToken,
+		"refresh_token": session.RefreshToken,
+		"expires_in":    900,
+	})
 }
 
 func (h *AuthHandler) CreateMFAChallenge(c *gin.Context) {

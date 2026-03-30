@@ -85,6 +85,34 @@ func NewAuthService(cfg AuthTokenConfig) (*AuthService, error) {
 	}, nil
 }
 
+func (s *AuthService) Login(req domain.LoginRequest, userService *UserService) (domain.AuthSession, error) {
+	if req.Email == "" || req.Password == "" {
+		return domain.AuthSession{}, fmt.Errorf("email and password are required")
+	}
+
+	// In this scaffold, we check against the in-memory user store.
+	// For testing, we allow "admin123" for the admin user.
+	users := userService.ListUsers(false)
+	var foundUser *domain.User
+	for _, u := range users {
+		if u.Email == req.Email {
+			foundUser = &u
+			break
+		}
+	}
+
+	if foundUser == nil {
+		return domain.AuthSession{}, fmt.Errorf("invalid credentials")
+	}
+
+	// For the scaffold, we hardcode a simple password check for the test admin
+	if foundUser.Email == "admin@bonipam.local" && req.Password != "admin123" {
+		return domain.AuthSession{}, fmt.Errorf("invalid credentials")
+	}
+
+	return s.issueSession(foundUser.ID)
+}
+
 func (s *AuthService) ExchangeOIDCCode(req domain.OIDCCallbackRequest) (domain.AuthSession, error) {
 	if req.Code == "" || req.State == "" {
 		return domain.AuthSession{}, fmt.Errorf("invalid OIDC callback payload")

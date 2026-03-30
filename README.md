@@ -18,16 +18,31 @@ This repository now contains a production-oriented Go microservices scaffold for
 
 ## Run locally
 
+### Backend
 ```bash
-go mod tidy
-chmod +x services/scripts/run-local.sh
-./services/scripts/run-local.sh
+# From project root
+bash backend/services/scripts/run-local.sh
 ```
 
-Health checks:
+### Frontend
+```bash
+cd frontend
+npm install
+npm run dev
+```
 
-- `GET http://localhost:8080/health`
-- `GET http://localhost:8081/health`
+## Test Credentials
+
+For development and testing, the `auth-service` is pre-configured with the following in-memory user:
+
+- **Email**: `admin@bonipam.local`
+- **Password**: `admin123` (Note: Backend currently accepts any password for this user in dev mode)
+- **Role**: `SuperAdmin`
+
+## Health Checks
+
+- **API Gateway**: `GET http://localhost:8080/health`
+- **Auth Service**: `GET http://localhost:8081/health`
 
 ## Initial API routes
 

@@ -4,6 +4,11 @@ set -euo pipefail
 export APP_ENV=${APP_ENV:-development}
 export LOG_LEVEL=${LOG_LEVEL:-debug}
 
+echo "Cleaning up existing processes on 8080 and 8081..."
+fuser -k 8080/tcp 8081/tcp || true
+
+cd backend
+
 echo "Starting auth-service on :8081"
 HTTP_PORT=8081 go run ./cmd/auth-service &
 AUTH_PID=$!

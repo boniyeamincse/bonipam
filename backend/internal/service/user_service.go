@@ -17,7 +17,22 @@ type UserService struct {
 }
 
 func NewUserService() *UserService {
-	return &UserService{users: make(map[string]domain.User)}
+	s := &UserService{users: make(map[string]domain.User)}
+	
+	// Default Admin User for testing
+	admin := domain.User{
+		ID:          "usr-admin-001",
+		Email:       "admin@bonipam.local",
+		DisplayName: "System Administrator",
+		Groups:      []string{"admin", "security-ops"},
+		Roles:       []string{"SuperAdmin"},
+		Status:      "active",
+		CreatedAt:   time.Now().UTC(),
+		UpdatedAt:   time.Now().UTC(),
+	}
+	s.users[admin.ID] = admin
+	
+	return s
 }
 
 func (s *UserService) CreateUser(req domain.CreateUserRequest) (domain.User, error) {

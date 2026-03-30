@@ -43,3 +43,8 @@ type OIDCCallbackRequest struct {
 	Code  string `json:"code" binding:"required"`
 	State string `json:"state" binding:"required"`
 }
+
+type LoginRequest struct {
+	Email    string `json:"email" binding:"required,email"`
+	Password string `json:"password" binding:"required"`
+}

@@ -3,8 +3,8 @@ package main
 import (
 	"boni-pam/internal/app"
 	"boni-pam/internal/middleware"
-	transporthttp "boni-pam/internal/transport/http"
 	"boni-pam/internal/service"
+	transporthttp "boni-pam/internal/transport/http"
 	"boni-pam/pkg/config"
 	"boni-pam/pkg/logger"
 	"context"
@@ -34,7 +34,7 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(gin.Recovery(), middleware.CorrelationID())
+	router.Use(gin.Recovery(), middleware.CORS(), middleware.CorrelationID())
 
 	router.GET("/health", transporthttp.HealthHandler(cfg.ServiceName, cfg.Env))
 
