@@ -675,6 +675,7 @@ boni-pam/
 - **TASK-017: Asset Tagging and Grouping**  
   Description: Support environment, owner, and criticality tags for policy targeting.  
   Module: Asset Management
+  Status: Done
 
 - **TASK-018: Asset Connectivity Tester**  
   Description: Build secure test connection workflow for SSH and database assets.  

@@ -42,6 +42,11 @@ func (s *AssetService) CreateAsset(req domain.CreateAssetRequest) (domain.Asset,
 		return domain.Asset{}, err
 	}
 
+	environment, owner, criticality, groups, err := normalizeAssetTagging(req.Environment, req.Owner, req.Criticality, req.Groups)
+	if err != nil {
+		return domain.Asset{}, err
+	}
+
 	now := time.Now().UTC()
 	asset := domain.Asset{
 		ID:                 "ast-" + uuid.NewString(),
@@ -49,6 +54,10 @@ func (s *AssetService) CreateAsset(req domain.CreateAssetRequest) (domain.Asset,
 		Type:               assetType,
 		Host:               host,
 		Port:               port,
+		Environment:        environment,
+		Owner:              owner,
+		Criticality:        criticality,
+		Groups:             groups,
 		ConnectionMetadata: metadata,
 		CreatedAt:          now,
 		UpdatedAt:          now,
@@ -67,12 +76,29 @@ func (s *AssetService) CreateAsset(req domain.CreateAssetRequest) (domain.Asset,
 	return asset, nil
 }
 
-func (s *AssetService) ListAssets() []domain.Asset {
+func (s *AssetService) ListAssets(environment, owner, criticality, group string) []domain.Asset {
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	owner = strings.ToLower(strings.TrimSpace(owner))
+	criticality = strings.ToLower(strings.TrimSpace(criticality))
+	group = strings.ToLower(strings.TrimSpace(group))
+
 	s.mu.RLock()
 	defer s.mu.RUnlock()
 
 	result := make([]domain.Asset, 0, len(s.assets))
 	for _, asset := range s.assets {
+		if environment != "" && asset.Environment != environment {
+			continue
+		}
+		if owner != "" && strings.ToLower(asset.Owner) != owner {
+			continue
+		}
+		if criticality != "" && asset.Criticality != criticality {
+			continue
+		}
+		if group != "" && !containsString(asset.Groups, group) {
+			continue
+		}
 		result = append(result, asset)
 	}
 
@@ -92,6 +118,30 @@ func (s *AssetService) GetAsset(assetID string) (domain.Asset, error) {
 		return domain.Asset{}, fmt.Errorf("asset not found")
 	}
 
+	return asset, nil
+}
+
+func (s *AssetService) UpdateAssetTagging(assetID string, req domain.UpdateAssetTaggingRequest) (domain.Asset, error) {
+	environment, owner, criticality, groups, err := normalizeAssetTagging(req.Environment, req.Owner, req.Criticality, req.Groups)
+	if err != nil {
+		return domain.Asset{}, err
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	asset, ok := s.assets[assetID]
+	if !ok {
+		return domain.Asset{}, fmt.Errorf("asset not found")
+	}
+
+	asset.Environment = environment
+	asset.Owner = owner
+	asset.Criticality = criticality
+	asset.Groups = groups
+	asset.UpdatedAt = time.Now().UTC()
+
+	s.assets[assetID] = asset
 	return asset, nil
 }
 
@@ -160,4 +210,42 @@ func validateConnectionMetadata(assetType string, metadata map[string]interface{
 	}
 
 	return normalized, nil
+}
+
+func normalizeAssetTagging(environment, owner, criticality string, groups []string) (string, string, string, []string, error) {
+	environment = strings.ToLower(strings.TrimSpace(environment))
+	owner = strings.TrimSpace(owner)
+	criticality = strings.ToLower(strings.TrimSpace(criticality))
+
+	if environment != "" && environment != "dev" && environment != "staging" && environment != "prod" {
+		return "", "", "", nil, fmt.Errorf("environment must be one of: dev, staging, prod")
+	}
+	if criticality != "" && criticality != "low" && criticality != "medium" && criticality != "high" && criticality != "critical" {
+		return "", "", "", nil, fmt.Errorf("criticality must be one of: low, medium, high, critical")
+	}
+
+	normalizedGroups := make([]string, 0, len(groups))
+	seen := make(map[string]struct{}, len(groups))
+	for _, group := range groups {
+		normalized := strings.ToLower(strings.TrimSpace(group))
+		if normalized == "" {
+			continue
+		}
+		if _, ok := seen[normalized]; ok {
+			continue
+		}
+		seen[normalized] = struct{}{}
+		normalizedGroups = append(normalizedGroups, normalized)
+	}
+
+	return environment, owner, criticality, normalizedGroups, nil
+}
+
+func containsString(values []string, target string) bool {
+	for _, value := range values {
+		if strings.ToLower(value) == target {
+			return true
+		}
+	}
+	return false
 }
