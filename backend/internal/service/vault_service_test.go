@@ -113,3 +113,109 @@ func TestVaultService_IssueCredentialValidation(t *testing.T) {
 		t.Fatalf("expected ttl validation error")
 	}
 }
+
+func TestVaultService_CreateRotationPolicy(t *testing.T) {
+	s, err := NewVaultService("test-master-key-123456")
+	if err != nil {
+		t.Fatalf("NewVaultService returned error: %v", err)
+	}
+
+	policy, err := s.CreateRotationPolicy(domain.CreateRotationPolicyRequest{
+		TargetType:      "database",
+		TargetID:        "asset-db-01",
+		Role:            "readonly",
+		IntervalSeconds: 3600,
+		TTLSeconds:      600,
+	})
+	if err != nil {
+		t.Fatalf("CreateRotationPolicy returned error: %v", err)
+	}
+	if policy.PolicyID == "" {
+		t.Fatalf("expected policy id to be set")
+	}
+	if !policy.Enabled {
+		t.Fatalf("expected policy to be enabled")
+	}
+	if policy.IntervalSeconds != 3600 {
+		t.Fatalf("expected interval 3600, got %d", policy.IntervalSeconds)
+	}
+
+	// Duplicate should fail
+	_, err = s.CreateRotationPolicy(domain.CreateRotationPolicyRequest{
+		TargetType:      "database",
+		TargetID:        "asset-db-01",
+		Role:            "readonly",
+		IntervalSeconds: 3600,
+	})
+	if err == nil {
+		t.Fatalf("expected duplicate rotation policy error")
+	}
+}
+
+func TestVaultService_GetRotationPolicy(t *testing.T) {
+	s, err := NewVaultService("test-master-key-123456")
+	if err != nil {
+		t.Fatalf("NewVaultService returned error: %v", err)
+	}
+
+	created, err := s.CreateRotationPolicy(domain.CreateRotationPolicyRequest{
+		TargetType:      "ssh",
+		TargetID:        "bastion-01",
+		Role:            "operator",
+		IntervalSeconds: 7200,
+	})
+	if err != nil {
+		t.Fatalf("CreateRotationPolicy returned error: %v", err)
+	}
+
+	got, err := s.GetRotationPolicy(created.PolicyID)
+	if err != nil {
+		t.Fatalf("GetRotationPolicy returned error: %v", err)
+	}
+	if got.PolicyID != created.PolicyID {
+		t.Fatalf("expected policy id to match")
+	}
+
+	_, err = s.GetRotationPolicy("nonexistent-policy-id")
+	if err == nil {
+		t.Fatalf("expected not found error")
+	}
+}
+
+func TestVaultService_TriggerRotation(t *testing.T) {
+	s, err := NewVaultService("test-master-key-123456")
+	if err != nil {
+		t.Fatalf("NewVaultService returned error: %v", err)
+	}
+
+	policy, err := s.CreateRotationPolicy(domain.CreateRotationPolicyRequest{
+		TargetType:      "api",
+		TargetID:        "svc-api-01",
+		Role:            "consumer",
+		IntervalSeconds: 3600,
+		TTLSeconds:      300,
+	})
+	if err != nil {
+		t.Fatalf("CreateRotationPolicy returned error: %v", err)
+	}
+
+	result, err := s.TriggerRotation(policy.PolicyID)
+	if err != nil {
+		t.Fatalf("TriggerRotation returned error: %v", err)
+	}
+	if result.LeaseID == "" || result.Username == "" {
+		t.Fatalf("expected lease and username to be set after rotation")
+	}
+	if result.RotatedAt.IsZero() {
+		t.Fatalf("expected rotated_at to be set")
+	}
+
+	// Policy should reflect last rotated timestamp
+	updated, err := s.GetRotationPolicy(policy.PolicyID)
+	if err != nil {
+		t.Fatalf("GetRotationPolicy after trigger returned error: %v", err)
+	}
+	if updated.LastRotatedAt == nil || updated.LastRotatedAt.IsZero() {
+		t.Fatalf("expected last_rotated_at to be set after trigger")
+	}
+}

@@ -18,12 +18,13 @@ import (
 )
 
 type VaultService struct {
-	mu          sync.RWMutex
-	secrets     map[string]domain.SecretRecord
-	leases      map[string]domain.CredentialLeaseRecord
-	masterKey   []byte
-	kekVersion  string
-	masterAlias string
+	mu               sync.RWMutex
+	secrets          map[string]domain.SecretRecord
+	leases           map[string]domain.CredentialLeaseRecord
+	rotationPolicies map[string]domain.RotationPolicy
+	masterKey        []byte
+	kekVersion       string
+	masterAlias      string
 }
 
 func NewVaultService(masterKey string) (*VaultService, error) {
@@ -36,11 +37,12 @@ func NewVaultService(masterKey string) (*VaultService, error) {
 	}
 
 	return &VaultService{
-		secrets:     make(map[string]domain.SecretRecord),
-		leases:      make(map[string]domain.CredentialLeaseRecord),
-		masterKey:   []byte(trimmed),
-		kekVersion:  "v1",
-		masterAlias: "local-kek",
+		secrets:          make(map[string]domain.SecretRecord),
+		leases:           make(map[string]domain.CredentialLeaseRecord),
+		rotationPolicies: make(map[string]domain.RotationPolicy),
+		masterKey:        []byte(trimmed),
+		kekVersion:       "v1",
+		masterAlias:      "local-kek",
 	}, nil
 }
 
@@ -101,6 +103,150 @@ func (s *VaultService) IssueCredential(req domain.IssueCredentialRequest) (domai
 		Revoked:      lease.Revoked,
 		LeaseSeconds: lease.LeaseSeconds,
 	}, nil
+}
+
+// CreateRotationPolicy registers a new rotation policy for a target.
+func (s *VaultService) CreateRotationPolicy(req domain.CreateRotationPolicyRequest) (domain.RotationPolicyResponse, error) {
+	targetType := strings.ToLower(strings.TrimSpace(req.TargetType))
+	targetID := strings.TrimSpace(req.TargetID)
+	role := strings.TrimSpace(req.Role)
+	if targetType == "" || targetID == "" || role == "" {
+		return domain.RotationPolicyResponse{}, fmt.Errorf("target_type, target_id, and role are required")
+	}
+	if !isSupportedTargetType(targetType) {
+		return domain.RotationPolicyResponse{}, fmt.Errorf("unsupported target type")
+	}
+	if req.IntervalSeconds < 60 {
+		return domain.RotationPolicyResponse{}, fmt.Errorf("interval_seconds must be at least 60")
+	}
+	ttl := req.TTLSeconds
+	if ttl == 0 {
+		ttl = req.IntervalSeconds
+	}
+	if ttl < 60 || ttl > 86400 {
+		return domain.RotationPolicyResponse{}, fmt.Errorf("ttl_seconds must be between 60 and 86400")
+	}
+
+	now := time.Now().UTC()
+	policy := domain.RotationPolicy{
+		PolicyID:        "rp-" + uuid.NewString(),
+		TargetType:      targetType,
+		TargetID:        targetID,
+		Role:            role,
+		IntervalSeconds: req.IntervalSeconds,
+		TTLSeconds:      ttl,
+		Metadata:        req.Metadata,
+		Enabled:         true,
+		CreatedAt:       now,
+		UpdatedAt:       now,
+		LastRotatedAt:   nil,
+		NextRotationAt:  now.Add(time.Duration(req.IntervalSeconds) * time.Second),
+	}
+
+	s.mu.Lock()
+	for _, existing := range s.rotationPolicies {
+		if strings.EqualFold(existing.TargetID, targetID) &&
+			strings.EqualFold(existing.TargetType, targetType) &&
+			strings.EqualFold(existing.Role, role) {
+			s.mu.Unlock()
+			return domain.RotationPolicyResponse{}, fmt.Errorf("rotation policy already exists for this target and role")
+		}
+	}
+	s.rotationPolicies[policy.PolicyID] = policy
+	s.mu.Unlock()
+
+	return toRotationPolicyResponse(policy), nil
+}
+
+// GetRotationPolicy returns a rotation policy by ID.
+func (s *VaultService) GetRotationPolicy(policyID string) (domain.RotationPolicyResponse, error) {
+	s.mu.RLock()
+	policy, ok := s.rotationPolicies[policyID]
+	s.mu.RUnlock()
+	if !ok {
+		return domain.RotationPolicyResponse{}, fmt.Errorf("rotation policy not found")
+	}
+	return toRotationPolicyResponse(policy), nil
+}
+
+// TriggerRotation immediately rotates the credential for a policy.
+func (s *VaultService) TriggerRotation(policyID string) (domain.RotationResult, error) {
+	s.mu.Lock()
+	policy, ok := s.rotationPolicies[policyID]
+	if !ok {
+		s.mu.Unlock()
+		return domain.RotationResult{}, fmt.Errorf("rotation policy not found")
+	}
+	if !policy.Enabled {
+		s.mu.Unlock()
+		return domain.RotationResult{}, fmt.Errorf("rotation policy is disabled")
+	}
+	s.mu.Unlock()
+
+	issued, err := s.IssueCredential(domain.IssueCredentialRequest{
+		TargetType: policy.TargetType,
+		TargetID:   policy.TargetID,
+		Role:       policy.Role,
+		TTLSeconds: policy.TTLSeconds,
+		Metadata:   policy.Metadata,
+	})
+	if err != nil {
+		return domain.RotationResult{}, fmt.Errorf("failed to rotate credential: %w", err)
+	}
+
+	now := time.Now().UTC()
+	s.mu.Lock()
+	policy.LastRotatedAt = &now
+	policy.NextRotationAt = now.Add(time.Duration(policy.IntervalSeconds) * time.Second)
+	policy.UpdatedAt = now
+	s.rotationPolicies[policyID] = policy
+	s.mu.Unlock()
+
+	return domain.RotationResult{
+		PolicyID:  policyID,
+		LeaseID:   issued.LeaseID,
+		Username:  issued.Username,
+		RotatedAt: now,
+		ExpiresAt: issued.ExpiresAt,
+	}, nil
+}
+
+// RunDueRotations checks all enabled policies and rotates any that are past their next rotation time.
+func (s *VaultService) RunDueRotations() []domain.RotationResult {
+	s.mu.RLock()
+	var dueIDs []string
+	for id, policy := range s.rotationPolicies {
+		if policy.Enabled && time.Now().UTC().After(policy.NextRotationAt) {
+			dueIDs = append(dueIDs, id)
+		}
+	}
+	s.mu.RUnlock()
+
+	var results []domain.RotationResult
+	for _, id := range dueIDs {
+		result, err := s.TriggerRotation(id)
+		if err == nil {
+			results = append(results, result)
+		}
+	}
+	return results
+}
+
+func toRotationPolicyResponse(p domain.RotationPolicy) domain.RotationPolicyResponse {
+	return domain.RotationPolicyResponse{
+		PolicyID:        p.PolicyID,
+		TargetType:      p.TargetType,
+		TargetID:        p.TargetID,
+		Role:            p.Role,
+		IntervalSeconds: p.IntervalSeconds,
+		TTLSeconds:      p.TTLSeconds,
+		Metadata:        p.Metadata,
+		Enabled:         p.Enabled,
+		CreatedAt:       p.CreatedAt,
+		UpdatedAt:       p.UpdatedAt,
+		LastRotatedAt:   p.LastRotatedAt,
+		NextRotationAt:  p.NextRotationAt,
+	}
 }
 
 func (s *VaultService) StoreSecret(req domain.CreateSecretRequest) (domain.CreateSecretResponse, error) {

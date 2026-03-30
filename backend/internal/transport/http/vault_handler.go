@@ -21,6 +21,9 @@ func (h *VaultHandler) RegisterRoutes(group *gin.RouterGroup) {
 	vault.POST("/secrets", h.StoreSecret)
 	vault.GET("/secrets/:secretId", h.GetSecret)
 	vault.POST("/credentials/issue", h.IssueCredential)
+	vault.POST("/rotation-policies", h.CreateRotationPolicy)
+	vault.GET("/rotation-policies/:policyId", h.GetRotationPolicy)
+	vault.POST("/rotation-policies/:policyId/trigger", h.TriggerRotation)
 }
 
 func (h *VaultHandler) StoreSecret(c *gin.Context) {
@@ -68,4 +71,51 @@ func (h *VaultHandler) IssueCredential(c *gin.Context) {
 	}
 
 	RespondOK(c, http.StatusCreated, result)
+}
+
+func (h *VaultHandler) CreateRotationPolicy(c *gin.Context) {
+	var req domain.CreateRotationPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid create rotation policy request")
+		return
+	}
+
+	result, err := h.vaultService.CreateRotationPolicy(req)
+	if err != nil {
+		status := http.StatusBadRequest
+		code := "ROTATION_POLICY_CREATE_FAILED"
+		if err.Error() == "unsupported target type" {
+			code = "UNSUPPORTED_TARGET_TYPE"
+		}
+		RespondError(c, status, code, err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusCreated, result)
+}
+
+func (h *VaultHandler) GetRotationPolicy(c *gin.Context) {
+	result, err := h.vaultService.GetRotationPolicy(c.Param("policyId"))
+	if err != nil {
+		RespondError(c, http.StatusNotFound, "ROTATION_POLICY_NOT_FOUND", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, result)
+}
+
+func (h *VaultHandler) TriggerRotation(c *gin.Context) {
+	result, err := h.vaultService.TriggerRotation(c.Param("policyId"))
+	if err != nil {
+		status := http.StatusBadRequest
+		code := "ROTATION_TRIGGER_FAILED"
+		if err.Error() == "rotation policy not found" {
+			status = http.StatusNotFound
+			code = "ROTATION_POLICY_NOT_FOUND"
+		}
+		RespondError(c, status, code, err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, result)
 }

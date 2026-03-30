@@ -705,6 +705,7 @@ boni-pam/
 - **TASK-023: Credential Rotation Scheduler**  
   Description: Build periodic rotation jobs and policy-driven rotation windows.  
   Module: Vault Service
+  Status: Done
 
 - **TASK-024: Lease Revocation Mechanism**  
   Description: Revoke active credential leases on session termination or policy trigger.  
