@@ -3,6 +3,7 @@ package service
 import (
 	"context"
 	"testing"
+	"time"
 
 	"boni-pam/internal/domain"
 )
@@ -226,5 +227,86 @@ func TestPolicyService_PublishAndRollback(t *testing.T) {
 	}
 	if rolledBack.Definition.DefaultEffect != "deny" {
 		t.Fatalf("expected rollback to version 1 definition, got default_effect=%s", rolledBack.Definition.DefaultEffect)
+	}
+}
+
+func TestContextResolverService_Resolve(t *testing.T) {
+	resolver := NewContextResolverService()
+	risk := 72.5
+
+	resolved := resolver.Resolve(domain.PolicyEvaluationRequest{
+		SourceIP:    "10.0.0.5",
+		DeviceID:    "device-123",
+		DeviceTrust: "TRUSTED",
+		RiskScore:   &risk,
+		RequestTime: "2026-03-30T14:35:00Z",
+		Attributes: map[string]interface{}{
+			"custom_flag": true,
+		},
+	})
+
+	if resolved["source_ip"] != "10.0.0.5" {
+		t.Fatalf("expected source_ip to be resolved")
+	}
+	if resolved["device_trust"] != "trusted" {
+		t.Fatalf("expected normalized device_trust")
+	}
+	if resolved["risk_score"] != 72.5 {
+		t.Fatalf("expected risk_score to be resolved")
+	}
+	if resolved["time"] != "14:35" {
+		t.Fatalf("expected time to be derived from request_time, got %v", resolved["time"])
+	}
+	if resolved["day_of_week"] != "monday" {
+		t.Fatalf("expected day_of_week to be derived from request_time, got %v", resolved["day_of_week"])
+	}
+	if resolved["custom_flag"] != true {
+		t.Fatalf("expected custom attributes to be preserved")
+	}
+}
+
+func TestPolicyService_EvaluatePolicy_WithResolvedContext(t *testing.T) {
+	s := NewPolicyService()
+	ctx := context.Background()
+
+	created, err := s.CreatePolicy(ctx, domain.CreatePolicyRequest{
+		Name: "context-aware-eval",
+		Definition: domain.PolicyDefinition{
+			SchemaVersion: "1.0",
+			DefaultEffect: "deny",
+			Rules: []domain.PolicyRule{
+				{
+					Effect:    "allow",
+					Subjects:  []string{"role:admin"},
+					Resources: []string{"asset:*"},
+					Actions:   []string{"ssh.connect"},
+					Conditions: []domain.PolicyCondition{
+						{Attribute: "device_trust", Operator: "eq", Value: "trusted"},
+						{Attribute: "risk_score", Operator: "lt", Value: 70},
+						{Attribute: "time", Operator: "between", Value: []string{"09:00", "17:00"}},
+					},
+				},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreatePolicy returned error: %v", err)
+	}
+
+	risk := 55.0
+	result, err := s.EvaluatePolicy(ctx, created.ID.String(), domain.PolicyEvaluationRequest{
+		Subject:     "role:admin",
+		Resource:    "asset:server-1",
+		Action:      "ssh.connect",
+		SourceIP:    "10.1.1.9",
+		DeviceTrust: "trusted",
+		RiskScore:   &risk,
+		RequestTime: time.Date(2026, time.March, 30, 10, 0, 0, 0, time.UTC).Format(time.RFC3339),
+	})
+	if err != nil {
+		t.Fatalf("EvaluatePolicy returned error: %v", err)
+	}
+	if result.Decision != "allow" {
+		t.Fatalf("expected allow decision, got %s", result.Decision)
 	}
 }

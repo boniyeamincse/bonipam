@@ -65,10 +65,15 @@ type UpdatePolicyRequest struct {
 }
 
 type PolicyEvaluationRequest struct {
-	Subject    string                 `json:"subject" binding:"required"`
-	Resource   string                 `json:"resource" binding:"required"`
-	Action     string                 `json:"action" binding:"required"`
-	Attributes map[string]interface{} `json:"attributes"`
+	Subject     string                 `json:"subject" binding:"required"`
+	Resource    string                 `json:"resource" binding:"required"`
+	Action      string                 `json:"action" binding:"required"`
+	SourceIP    string                 `json:"source_ip"`
+	DeviceID    string                 `json:"device_id"`
+	DeviceTrust string                 `json:"device_trust"`
+	RiskScore   *float64               `json:"risk_score"`
+	RequestTime string                 `json:"request_time"`
+	Attributes  map[string]interface{} `json:"attributes"`
 }
 
 type PolicyEvaluationResponse struct {

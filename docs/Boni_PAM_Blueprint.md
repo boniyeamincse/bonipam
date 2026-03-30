@@ -665,6 +665,7 @@ boni-pam/
 - **TASK-015: Context Attribute Resolver**  
   Description: Resolve runtime attributes (device, IP, time, risk) for ABAC checks.  
   Module: Policy Engine
+  Status: Done
 
 - **TASK-016: Asset Registration API**  
   Description: Implement asset onboarding endpoint with connection metadata validation.  

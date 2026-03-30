@@ -252,6 +252,8 @@ func (s *PolicyService) EvaluatePolicy(ctx context.Context, policyID string, req
 		return domain.PolicyEvaluationResponse{}, fmt.Errorf("subject, resource, and action are required")
 	}
 
+	attributes := NewContextResolverService().Resolve(req)
+
 	decision := strings.ToLower(policy.Definition.DefaultEffect)
 	if decision != "allow" {
 		decision = "deny"
@@ -273,7 +275,7 @@ func (s *PolicyService) EvaluatePolicy(ctx context.Context, policyID string, req
 		if !matchesAny(rule.Actions, action) {
 			continue
 		}
-		if !conditionsMatch(rule.Conditions, req.Attributes) {
+		if !conditionsMatch(rule.Conditions, attributes) {
 			continue
 		}
 
