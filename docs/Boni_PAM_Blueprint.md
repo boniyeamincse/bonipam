@@ -645,10 +645,12 @@ boni-pam/
 - **TASK-011: Policy Definition Schema**  
   Description: Create JSON schema for policy documents with versioned validation.  
   Module: Policy Engine
+  Status: Done
 
 - **TASK-012: Policy CRUD Endpoints**  
   Description: Implement create/update/list/get APIs for policy artifacts.  
   Module: Policy Engine
+  Status: Done
 
 - **TASK-013: Policy Evaluation Runtime**  
   Description: Build deterministic evaluator returning allow/deny and obligations.  

@@ -36,7 +36,7 @@ func main() {
 
 	gin.SetMode(gin.ReleaseMode)
 	router := gin.New()
-	router.Use(gin.Recovery(), middleware.CorrelationID())
+	router.Use(gin.Recovery(), middleware.CORS(), middleware.CorrelationID())
 
 	router.GET("/health", transporthttp.HealthHandler(cfg.ServiceName, cfg.Env))
 
@@ -50,10 +50,9 @@ func main() {
 		log.Fatal("failed to initialize auth service", zap.Error(err))
 	}
 
-	authHandler := transporthttp.NewAuthHandler(authService)
-	authHandler.RegisterRoutes(v1)
-
 	userService := service.NewUserService()
+	authHandler := transporthttp.NewAuthHandler(authService, userService)
+	authHandler.RegisterRoutes(v1)
 	userHandler := transporthttp.NewUserHandler(userService)
 	userHandler.RegisterRoutes(v1)
 
@@ -62,7 +61,7 @@ func main() {
 	permissionHandler.RegisterRoutes(v1)
 
 	roleService := service.NewRoleService()
-	roleHandler := transporthttp.NewRoleHandler(roleService, permissionService)
+	roleHandler := transporthttp.NewRoleHandler(roleService)
 	roleHandler.RegisterRoutes(v1)
 
 	groupMappingService := service.NewGroupMappingService(roleService, userService)
