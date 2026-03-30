@@ -20,6 +20,7 @@ func (h *VaultHandler) RegisterRoutes(group *gin.RouterGroup) {
 	vault := group.Group("/vault")
 	vault.POST("/secrets", h.StoreSecret)
 	vault.GET("/secrets/:secretId", h.GetSecret)
+	vault.POST("/credentials/issue", h.IssueCredential)
 }
 
 func (h *VaultHandler) StoreSecret(c *gin.Context) {
@@ -46,4 +47,25 @@ func (h *VaultHandler) GetSecret(c *gin.Context) {
 	}
 
 	RespondOK(c, http.StatusOK, result)
+}
+
+func (h *VaultHandler) IssueCredential(c *gin.Context) {
+	var req domain.IssueCredentialRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid issue credential request")
+		return
+	}
+
+	result, err := h.vaultService.IssueCredential(req)
+	if err != nil {
+		status := http.StatusBadRequest
+		code := "CREDENTIAL_ISSUE_FAILED"
+		if err.Error() == "unsupported target type" {
+			code = "UNSUPPORTED_TARGET_TYPE"
+		}
+		RespondError(c, status, code, err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusCreated, result)
 }

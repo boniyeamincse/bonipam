@@ -700,6 +700,7 @@ boni-pam/
 - **TASK-022: Dynamic Credential Issuance**  
   Description: Generate short-lived credentials for supported targets with lease metadata.  
   Module: Vault Service
+  Status: Done
 
 - **TASK-023: Credential Rotation Scheduler**  
   Description: Build periodic rotation jobs and policy-driven rotation windows.  

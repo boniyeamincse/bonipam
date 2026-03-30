@@ -9,6 +9,7 @@ import (
 	"encoding/base64"
 	"fmt"
 	"io"
+	"math/big"
 	"strings"
 	"sync"
 	"time"
@@ -19,6 +20,7 @@ import (
 type VaultService struct {
 	mu          sync.RWMutex
 	secrets     map[string]domain.SecretRecord
+	leases      map[string]domain.CredentialLeaseRecord
 	masterKey   []byte
 	kekVersion  string
 	masterAlias string
@@ -35,9 +37,69 @@ func NewVaultService(masterKey string) (*VaultService, error) {
 
 	return &VaultService{
 		secrets:     make(map[string]domain.SecretRecord),
+		leases:      make(map[string]domain.CredentialLeaseRecord),
 		masterKey:   []byte(trimmed),
 		kekVersion:  "v1",
 		masterAlias: "local-kek",
+	}, nil
+}
+
+func (s *VaultService) IssueCredential(req domain.IssueCredentialRequest) (domain.IssueCredentialResponse, error) {
+	targetType := strings.ToLower(strings.TrimSpace(req.TargetType))
+	targetID := strings.TrimSpace(req.TargetID)
+	role := strings.TrimSpace(req.Role)
+	if targetType == "" || targetID == "" || role == "" {
+		return domain.IssueCredentialResponse{}, fmt.Errorf("target_type, target_id, and role are required")
+	}
+	if !isSupportedTargetType(targetType) {
+		return domain.IssueCredentialResponse{}, fmt.Errorf("unsupported target type")
+	}
+
+	ttlSeconds := req.TTLSeconds
+	if ttlSeconds == 0 {
+		ttlSeconds = 900
+	}
+	if ttlSeconds < 60 || ttlSeconds > 86400 {
+		return domain.IssueCredentialResponse{}, fmt.Errorf("ttl_seconds must be between 60 and 86400")
+	}
+
+	username := fmt.Sprintf("jit-%s-%s", normalizeForCredential(targetType), shortToken(8))
+	password, err := randomPassword(24)
+	if err != nil {
+		return domain.IssueCredentialResponse{}, fmt.Errorf("failed to generate credential secret")
+	}
+
+	now := time.Now().UTC()
+	lease := domain.CredentialLeaseRecord{
+		LeaseID:      "lease-" + uuid.NewString(),
+		TargetType:   targetType,
+		TargetID:     targetID,
+		Username:     username,
+		Password:     password,
+		Role:         role,
+		Metadata:     req.Metadata,
+		IssuedAt:     now,
+		ExpiresAt:    now.Add(time.Duration(ttlSeconds) * time.Second),
+		Revoked:      false,
+		LeaseSeconds: ttlSeconds,
+	}
+
+	s.mu.Lock()
+	s.leases[lease.LeaseID] = lease
+	s.mu.Unlock()
+
+	return domain.IssueCredentialResponse{
+		LeaseID:      lease.LeaseID,
+		TargetType:   lease.TargetType,
+		TargetID:     lease.TargetID,
+		Username:     lease.Username,
+		Password:     lease.Password,
+		Role:         lease.Role,
+		Metadata:     lease.Metadata,
+		IssuedAt:     lease.IssuedAt,
+		ExpiresAt:    lease.ExpiresAt,
+		Revoked:      lease.Revoked,
+		LeaseSeconds: lease.LeaseSeconds,
 	}, nil
 }
 
@@ -183,4 +245,56 @@ func (s *VaultService) unwrapDEK(wrapped []byte) []byte {
 		dek[i] = wrapped[i] ^ kek[i%len(kek)]
 	}
 	return dek
+}
+
+func isSupportedTargetType(targetType string) bool {
+	switch targetType {
+	case "database", "ssh", "api":
+		return true
+	default:
+		return false
+	}
+}
+
+func normalizeForCredential(value string) string {
+	normalized := strings.ToLower(strings.TrimSpace(value))
+	normalized = strings.ReplaceAll(normalized, " ", "-")
+	if normalized == "" {
+		return "target"
+	}
+	return normalized
+}
+
+func shortToken(length int) string {
+	token, err := randomString(length, "abcdefghijklmnopqrstuvwxyz0123456789")
+	if err != nil {
+		return uuid.NewString()[:length]
+	}
+	return token
+}
+
+func randomPassword(length int) (string, error) {
+	charset := "abcdefghijklmnopqrstuvwxyzABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789!@#$%^&*()_-+=<>?"
+	return randomString(length, charset)
+}
+
+func randomString(length int, charset string) (string, error) {
+	if length <= 0 {
+		return "", fmt.Errorf("invalid random string length")
+	}
+	if charset == "" {
+		return "", fmt.Errorf("charset is required")
+	}
+
+	buf := make([]byte, length)
+	max := big.NewInt(int64(len(charset)))
+	for i := 0; i < length; i++ {
+		n, err := rand.Int(rand.Reader, max)
+		if err != nil {
+			return "", err
+		}
+		buf[i] = charset[n.Int64()]
+	}
+
+	return string(buf), nil
 }
