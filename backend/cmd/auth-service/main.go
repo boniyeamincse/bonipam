@@ -53,7 +53,8 @@ func main() {
 	authHandler := transporthttp.NewAuthHandler(authService)
 	authHandler.RegisterRoutes(v1)
 
-	userHandler := transporthttp.NewUserHandler(service.NewUserService())
+	userService := service.NewUserService()
+	userHandler := transporthttp.NewUserHandler(userService)
 	userHandler.RegisterRoutes(v1)
 
 	permissionService := service.NewPermissionService()
@@ -63,6 +64,10 @@ func main() {
 	roleService := service.NewRoleService()
 	roleHandler := transporthttp.NewRoleHandler(roleService, permissionService)
 	roleHandler.RegisterRoutes(v1)
+
+	groupMappingService := service.NewGroupMappingService(roleService, userService)
+	groupMappingHandler := transporthttp.NewGroupMappingHandler(groupMappingService)
+	groupMappingHandler.RegisterRoutes(v1)
 
 	intervalSeconds := envInt("IDP_SYNC_INTERVAL_SECONDS", 300)
 	if intervalSeconds > 0 {

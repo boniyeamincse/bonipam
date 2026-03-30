@@ -4,6 +4,7 @@ import (
 	"boni-pam/internal/domain"
 	"fmt"
 	"sort"
+	"strings"
 	"sync"
 	"time"
 
@@ -47,6 +48,87 @@ func (s *UserService) CreateUser(req domain.CreateUserRequest) (domain.User, err
 
 	s.users[user.ID] = user
 	return user, nil
+}
+
+func (s *UserService) ReconcileGroupMembership(groupID string, memberUserIDs []string) (int, error) {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return 0, fmt.Errorf("group_id is required")
+	}
+
+	memberSet := make(map[string]struct{}, len(memberUserIDs))
+	for _, userID := range memberUserIDs {
+		memberSet[strings.TrimSpace(userID)] = struct{}{}
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	changed := 0
+	for userID, user := range s.users {
+		if user.DeletedAt != nil {
+			continue
+		}
+
+		_, shouldBeMember := memberSet[userID]
+		hasGroup := contains(user.Groups, groupID)
+
+		switch {
+		case shouldBeMember && !hasGroup:
+			user.Groups = append(user.Groups, groupID)
+			user.UpdatedAt = time.Now().UTC()
+			s.users[userID] = user
+			changed++
+		case !shouldBeMember && hasGroup:
+			user.Groups = removeValue(user.Groups, groupID)
+			user.UpdatedAt = time.Now().UTC()
+			s.users[userID] = user
+			changed++
+		}
+	}
+
+	return changed, nil
+}
+
+func (s *UserService) ApplyRoleMapping(groupID string, roleNames []string) int {
+	groupID = strings.TrimSpace(groupID)
+	if groupID == "" {
+		return 0
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	changed := 0
+	for userID, user := range s.users {
+		if user.DeletedAt != nil {
+			continue
+		}
+
+		member := contains(user.Groups, groupID)
+		rolesBefore := append([]string(nil), user.Roles...)
+
+		if member {
+			for _, role := range roleNames {
+				role = strings.TrimSpace(role)
+				if role != "" && !contains(user.Roles, role) {
+					user.Roles = append(user.Roles, role)
+				}
+			}
+		} else {
+			for _, role := range roleNames {
+				user.Roles = removeValue(user.Roles, strings.TrimSpace(role))
+			}
+		}
+
+		if !equalSlices(rolesBefore, user.Roles) {
+			user.UpdatedAt = time.Now().UTC()
+			s.users[userID] = user
+			changed++
+		}
+	}
+
+	return changed
 }
 
 func (s *UserService) ListUsers(includeDeleted bool) []domain.User {
@@ -146,4 +228,35 @@ func (s *UserService) RestoreUser(userID string) (domain.User, error) {
 	s.users[userID] = user
 
 	return user, nil
+}
+
+func contains(values []string, target string) bool {
+	for _, value := range values {
+		if value == target {
+			return true
+		}
+	}
+	return false
+}
+
+func removeValue(values []string, target string) []string {
+	filtered := make([]string, 0, len(values))
+	for _, value := range values {
+		if value != target {
+			filtered = append(filtered, value)
+		}
+	}
+	return filtered
+}
+
+func equalSlices(a, b []string) bool {
+	if len(a) != len(b) {
+		return false
+	}
+	for i := range a {
+		if a[i] != b[i] {
+			return false
+		}
+	}
+	return true
 }

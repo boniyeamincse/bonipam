@@ -9,12 +9,11 @@ import (
 )
 
 type RoleHandler struct {
-	roleService       *service.RoleService
-	permissionService *service.PermissionService
+	roleService *service.RoleService
 }
 
-func NewRoleHandler(roleService *service.RoleService, permissionService *service.PermissionService) *RoleHandler {
-	return &RoleHandler{roleService: roleService, permissionService: permissionService}
+func NewRoleHandler(roleService *service.RoleService) *RoleHandler {
+	return &RoleHandler{roleService: roleService}
 }
 
 func (h *RoleHandler) RegisterRoutes(group *gin.RouterGroup) {
@@ -23,7 +22,6 @@ func (h *RoleHandler) RegisterRoutes(group *gin.RouterGroup) {
 	roles.GET("", h.ListRoles)
 	roles.GET("/:roleId", h.GetRole)
 	roles.PUT("/:roleId", h.UpdateRole)
-	roles.PUT("/:roleId/permissions", h.SetRolePermissions)
 	roles.DELETE("/:roleId", h.DeleteRole)
 }
 
@@ -67,29 +65,6 @@ func (h *RoleHandler) UpdateRole(c *gin.Context) {
 	role, err := h.roleService.UpdateRole(c.Param("roleId"), req)
 	if err != nil {
 		RespondError(c, http.StatusNotFound, "ROLE_UPDATE_FAILED", err.Error())
-		return
-	}
-
-	RespondOK(c, http.StatusOK, role)
-}
-
-func (h *RoleHandler) SetRolePermissions(c *gin.Context) {
-	var req domain.SetRolePermissionsRequest
-	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid set role permissions request")
-		return
-	}
-
-	for _, permissionID := range req.PermissionIDs {
-		if !h.permissionService.Exists(permissionID) {
-			RespondError(c, http.StatusBadRequest, "ROLE_PERMISSION_FAILED", "unknown permission_id: "+permissionID)
-			return
-		}
-	}
-
-	role, err := h.roleService.SetPermissions(c.Param("roleId"), req.PermissionIDs)
-	if err != nil {
-		RespondError(c, http.StatusNotFound, "ROLE_PERMISSION_FAILED", err.Error())
 		return
 	}
 

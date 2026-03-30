@@ -99,22 +99,6 @@ func (s *RoleService) UpdateRole(roleID string, req domain.UpdateRoleRequest) (d
 	return role, nil
 }
 
-func (s *RoleService) SetPermissions(roleID string, permissionIDs []string) (domain.Role, error) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-
-	role, ok := s.roles[roleID]
-	if !ok {
-		return domain.Role{}, fmt.Errorf("role not found")
-	}
-
-	role.Permissions = dedupe(permissionIDs)
-	role.UpdatedAt = time.Now().UTC()
-	s.roles[roleID] = role
-
-	return role, nil
-}
-
 func (s *RoleService) DeleteRole(roleID string) error {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -135,6 +119,7 @@ func dedupe(values []string) []string {
 	if values == nil {
 		return nil
 	}
+
 	seen := make(map[string]struct{}, len(values))
 	result := make([]string, 0, len(values))
 	for _, value := range values {
@@ -148,5 +133,6 @@ func dedupe(values []string) []string {
 		seen[normalized] = struct{}{}
 		result = append(result, normalized)
 	}
+
 	return result
 }

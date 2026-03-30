@@ -640,6 +640,7 @@ boni-pam/
 - **TASK-010: Group-to-Role Mapping**  
   Description: Support assigning roles to external groups and reconcile membership changes.  
   Module: User & Role Management
+  Status: Done
 
 - **TASK-011: Policy Definition Schema**  
   Description: Create JSON schema for policy documents with versioned validation.  
@@ -1299,6 +1300,51 @@ services:
 - StatefulSets for PostgreSQL/Redis if self-hosted.
 - NetworkPolicies to restrict east-west traffic.
 - PodSecurity standards and runtime seccomp profiles.
+
+---
+
+## 11. Frontend Dashboard & Menu Design
+
+### Global Layout (The Shell)
+The application uses a persistent **Global Shell** to provide consistent navigation and context.
+- **Sidebar**: Collapsible navigation with grouped menu items. Includes brand logo and user profile summary at the bottom.
+- **Topbar**: Breadcrumbs for location awareness, Global Search bar, Notification Center (bell icon), and System Health indicator.
+- **Main Content Area**: Responsive container with smooth transitions between views.
+
+### Navigation Menu Structure
+
+#### 1. Overview
+- **Dashboard**: Real-time metrics and shortcut widgets.
+
+#### 2. Identity & Access
+- **Users**: List, Edit, Sync from IdP.
+- **Roles**: RBAC management and permission matrix.
+- **Groups**: External IdP group-to-role mappings.
+
+#### 3. Asset Management
+- **Inventory**: Categorized list of servers, databases, and clusters.
+- **Register Asset**: Onboarding wizard for new infrastructure.
+
+#### 4. Governance
+- **Policies**: Versioned policy editor (JSON + Form mode) and simulators.
+- **Vault**: Secrets management, rotation policies, and lease tracking.
+
+#### 5. Access Workflows
+- **Requests**: Submit and track access requests.
+- **Approvals**: Inbox for pending authorization decisions.
+- **JIT Grants**: Active time-bound entitlements.
+
+#### 6. Monitoring & Audit
+- **Sessions**: Live session monitor and emergency termination.
+- **Playback**: Searchable session recordings player.
+- **Audit Logs**: Immutable event explorer and compliance reporter.
+
+### Dashboard Widgets (Ideas)
+- **Active Sessions**: Counter with "View All" link to live monitor.
+- **Pending Approvals**: Badge with count and "Action Needed" list.
+- **Expiring Grants**: Warning widget for JIT access ending within 30m.
+- **Security Posture Score**: Gauge reflecting MFA usage and policy violations.
+- **Recent Activity**: Stream of the last 5 relevant audit events for the user.
 
 ---
 
