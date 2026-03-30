@@ -695,6 +695,7 @@ boni-pam/
 - **TASK-021: Secret Storage API**  
   Description: Create encrypted secret write/read APIs with envelope encryption.  
   Module: Vault Service
+  Status: Done
 
 - **TASK-022: Dynamic Credential Issuance**  
   Description: Generate short-lived credentials for supported targets with lease metadata.  
