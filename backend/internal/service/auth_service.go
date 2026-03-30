@@ -53,6 +53,7 @@ type AuthService struct {
 	refreshTokens map[string]refreshTokenRecord
 	sessions      map[string]sessionRecord
 	tokenConfig   AuthTokenConfig
+	userSync      *UserSyncService
 }
 
 func NewAuthService(cfg AuthTokenConfig) (*AuthService, error) {
@@ -80,6 +81,7 @@ func NewAuthService(cfg AuthTokenConfig) (*AuthService, error) {
 		refreshTokens: make(map[string]refreshTokenRecord),
 		sessions:      make(map[string]sessionRecord),
 		tokenConfig:   cfg,
+		userSync:      NewUserSyncService(),
 	}, nil
 }
 
@@ -88,7 +90,16 @@ func (s *AuthService) ExchangeOIDCCode(req domain.OIDCCallbackRequest) (domain.A
 		return domain.AuthSession{}, fmt.Errorf("invalid OIDC callback payload")
 	}
 
-	return s.issueSession("user-" + uuid.NewString())
+	userID, err := s.userSync.SyncUserOnLogin(req.Code, req.State)
+	if err != nil {
+		return domain.AuthSession{}, err
+	}
+
+	return s.issueSession(userID)
+}
+
+func (s *AuthService) SyncAllUsersFromIdP() (int, error) {
+	return s.userSync.SyncAllUsers()
 }
 
 func (s *AuthService) CreateMFAChallenge(req domain.MFAChallengeRequest) (domain.MFAChallengeResponse, error) {
