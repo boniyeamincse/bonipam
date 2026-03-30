@@ -620,6 +620,7 @@ boni-pam/
 - **TASK-006: User Sync from IdP**  
   Description: Implement periodic and login-triggered synchronization of user profiles and groups.  
   Module: User & Role Management
+  Status: Done
 
 - **TASK-007: User CRUD with Soft Delete**  
   Description: Create admin APIs for user lifecycle with soft-delete and recovery controls.  

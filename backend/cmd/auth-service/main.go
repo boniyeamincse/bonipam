@@ -11,7 +11,9 @@ import (
 	"net/http"
 	"os"
 	"os/signal"
+	"strconv"
 	"syscall"
+	"time"
 
 	"github.com/gin-gonic/gin"
 	"github.com/joho/godotenv"
@@ -51,6 +53,23 @@ func main() {
 	authHandler := transporthttp.NewAuthHandler(authService)
 	authHandler.RegisterRoutes(v1)
 
+	intervalSeconds := envInt("IDP_SYNC_INTERVAL_SECONDS", 300)
+	if intervalSeconds > 0 {
+		ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)
+		defer ticker.Stop()
+
+		go func() {
+			for range ticker.C {
+				synced, err := authService.SyncAllUsersFromIdP()
+				if err != nil {
+					log.Error("periodic idp user sync failed", zap.Error(err))
+					continue
+				}
+				log.Info("periodic idp user sync completed", zap.Int("synced_users", synced))
+			}
+		}()
+	}
+
 	server := app.NewServer(cfg.HTTPPort, router, log)
 	go func() {
 		if err := server.Start(); err != nil && err != http.ErrServerClosed {
@@ -68,4 +87,18 @@ func main() {
 	if err := server.Shutdown(ctx); err != nil {
 		log.Error("graceful shutdown failed", zap.Error(err))
 	}
+}
+
+func envInt(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+
+	return parsed
 }
