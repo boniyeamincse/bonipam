@@ -53,6 +53,9 @@ func main() {
 	authHandler := transporthttp.NewAuthHandler(authService)
 	authHandler.RegisterRoutes(v1)
 
+	userHandler := transporthttp.NewUserHandler(service.NewUserService())
+	userHandler.RegisterRoutes(v1)
+
 	intervalSeconds := envInt("IDP_SYNC_INTERVAL_SECONDS", 300)
 	if intervalSeconds > 0 {
 		ticker := time.NewTicker(time.Duration(intervalSeconds) * time.Second)

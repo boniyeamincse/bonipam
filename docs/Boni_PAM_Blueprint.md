@@ -625,6 +625,7 @@ boni-pam/
 - **TASK-007: User CRUD with Soft Delete**  
   Description: Create admin APIs for user lifecycle with soft-delete and recovery controls.  
   Module: User & Role Management
+  Status: Done
 
 - **TASK-008: Role CRUD APIs**  
   Description: Build endpoints for role create/read/update/delete with validation.  
