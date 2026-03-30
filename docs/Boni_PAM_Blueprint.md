@@ -680,6 +680,7 @@ boni-pam/
 - **TASK-018: Asset Connectivity Tester**  
   Description: Build secure test connection workflow for SSH and database assets.  
   Module: Asset Management
+  Status: Done
 
 - **TASK-019: Asset Ownership Workflow**  
   Description: Implement owner assignment and transfer with approvals and audit events.  

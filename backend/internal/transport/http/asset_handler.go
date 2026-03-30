@@ -22,6 +22,7 @@ func (h *AssetHandler) RegisterRoutes(group *gin.RouterGroup) {
 	assets.GET("", h.ListAssets)
 	assets.GET("/:assetId", h.GetAsset)
 	assets.PUT("/:assetId/tags", h.UpdateAssetTagging)
+	assets.POST("/:assetId/test-connection", h.TestConnection)
 }
 
 func (h *AssetHandler) CreateAsset(c *gin.Context) {
@@ -73,4 +74,22 @@ func (h *AssetHandler) UpdateAssetTagging(c *gin.Context) {
 	}
 
 	RespondOK(c, http.StatusOK, asset)
+}
+
+func (h *AssetHandler) TestConnection(c *gin.Context) {
+	var req domain.TestAssetConnectionRequest
+	if c.ContentType() == "application/json" {
+		if err := c.ShouldBindJSON(&req); err != nil {
+			RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid test connection request")
+			return
+		}
+	}
+
+	result, err := h.assetService.TestConnection(c.Param("assetId"), req.TimeoutSeconds)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "ASSET_CONNECTION_TEST_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, result)
 }

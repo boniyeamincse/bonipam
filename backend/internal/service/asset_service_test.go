@@ -119,3 +119,67 @@ func TestAssetService_UpdateTaggingAndFilter(t *testing.T) {
 		t.Fatalf("expected one filtered asset, got %d", len(filtered))
 	}
 }
+
+func TestAssetService_TestConnection(t *testing.T) {
+	s := NewAssetService()
+
+	sshAsset, err := s.CreateAsset(domain.CreateAssetRequest{
+		Name: "ssh-node-1",
+		Type: "ssh",
+		Host: "ssh.internal.local",
+		ConnectionMetadata: map[string]interface{}{
+			"username":    "ops",
+			"auth_method": "key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreateAsset(ssh) returned error: %v", err)
+	}
+
+	t.Run("Success", func(t *testing.T) {
+		result, err := s.TestConnection(sshAsset.ID, 5)
+		if err != nil {
+			t.Fatalf("TestConnection returned error: %v", err)
+		}
+		if result.Status != "ok" {
+			t.Fatalf("expected status ok, got %s", result.Status)
+		}
+		if result.Protocol != "ssh" {
+			t.Fatalf("expected protocol ssh, got %s", result.Protocol)
+		}
+		if result.TimeoutUsedS != 5 {
+			t.Fatalf("expected timeout 5, got %d", result.TimeoutUsedS)
+		}
+	})
+
+	t.Run("FailureByHostPattern", func(t *testing.T) {
+		badAsset, err := s.CreateAsset(domain.CreateAssetRequest{
+			Name: "db-bad",
+			Type: "database",
+			Host: "unreachable-db.local",
+			ConnectionMetadata: map[string]interface{}{
+				"engine":   "postgres",
+				"database": "app",
+				"username": "app_user",
+			},
+		})
+		if err != nil {
+			t.Fatalf("CreateAsset(database) returned error: %v", err)
+		}
+
+		result, err := s.TestConnection(badAsset.ID, 3)
+		if err != nil {
+			t.Fatalf("TestConnection returned error: %v", err)
+		}
+		if result.Status != "failed" {
+			t.Fatalf("expected status failed, got %s", result.Status)
+		}
+	})
+
+	t.Run("NotFound", func(t *testing.T) {
+		_, err := s.TestConnection("ast-missing", 1)
+		if err == nil {
+			t.Fatalf("expected error for unknown asset")
+		}
+	})
+}

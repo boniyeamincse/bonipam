@@ -35,3 +35,17 @@ type UpdateAssetTaggingRequest struct {
 	Criticality string   `json:"criticality"`
 	Groups      []string `json:"groups"`
 }
+
+type TestAssetConnectionRequest struct {
+	TimeoutSeconds int `json:"timeout_seconds"`
+}
+
+type TestAssetConnectionResult struct {
+	AssetID      string    `json:"asset_id"`
+	Status       string    `json:"status"`
+	LatencyMs    int       `json:"latency_ms"`
+	CheckedAt    time.Time `json:"checked_at"`
+	Message      string    `json:"message"`
+	Protocol     string    `json:"protocol"`
+	TimeoutUsedS int       `json:"timeout_used_seconds"`
+}

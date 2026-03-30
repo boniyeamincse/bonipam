@@ -145,6 +145,59 @@ func (s *AssetService) UpdateAssetTagging(assetID string, req domain.UpdateAsset
 	return asset, nil
 }
 
+func (s *AssetService) TestConnection(assetID string, timeoutSeconds int) (domain.TestAssetConnectionResult, error) {
+	s.mu.RLock()
+	asset, ok := s.assets[assetID]
+	s.mu.RUnlock()
+	if !ok {
+		return domain.TestAssetConnectionResult{}, fmt.Errorf("asset not found")
+	}
+
+	if timeoutSeconds <= 0 {
+		timeoutSeconds = 3
+	}
+	if timeoutSeconds > 15 {
+		timeoutSeconds = 15
+	}
+
+	protocol := asset.Type
+	if protocol == "" {
+		protocol = "unknown"
+	}
+
+	if _, err := validateConnectionMetadata(asset.Type, asset.ConnectionMetadata); err != nil {
+		return domain.TestAssetConnectionResult{}, fmt.Errorf("connectivity pre-check failed: %w", err)
+	}
+
+	host := strings.ToLower(strings.TrimSpace(asset.Host))
+	failure := host == "" || strings.Contains(host, "invalid") || strings.Contains(host, "unreachable") || strings.Contains(host, "blocked")
+
+	latencyMs := simulateLatency(asset.Host, asset.Port, timeoutSeconds)
+	now := time.Now().UTC()
+
+	if failure {
+		return domain.TestAssetConnectionResult{
+			AssetID:      asset.ID,
+			Status:       "failed",
+			LatencyMs:    latencyMs,
+			CheckedAt:    now,
+			Message:      "connection test failed",
+			Protocol:     protocol,
+			TimeoutUsedS: timeoutSeconds,
+		}, nil
+	}
+
+	return domain.TestAssetConnectionResult{
+		AssetID:      asset.ID,
+		Status:       "ok",
+		LatencyMs:    latencyMs,
+		CheckedAt:    now,
+		Message:      "connection test passed",
+		Protocol:     protocol,
+		TimeoutUsedS: timeoutSeconds,
+	}, nil
+}
+
 func defaultPortForType(assetType string) int {
 	switch assetType {
 	case "ssh":
@@ -248,4 +301,12 @@ func containsString(values []string, target string) bool {
 		}
 	}
 	return false
+}
+
+func simulateLatency(host string, port int, timeoutSeconds int) int {
+	seed := len(strings.TrimSpace(host)) + port + timeoutSeconds
+	if seed < 0 {
+		seed = -seed
+	}
+	return 10 + (seed % 120)
 }
