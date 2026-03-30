@@ -3,8 +3,8 @@ package main
 import (
 	"boni-pam/internal/app"
 	"boni-pam/internal/middleware"
-	transporthttp "boni-pam/internal/transport/http"
 	"boni-pam/internal/service"
+	transporthttp "boni-pam/internal/transport/http"
 	"boni-pam/pkg/config"
 	"boni-pam/pkg/logger"
 	"context"
@@ -39,7 +39,16 @@ func main() {
 	router.GET("/health", transporthttp.HealthHandler(cfg.ServiceName, cfg.Env))
 
 	v1 := router.Group("/api/v1")
-	authHandler := transporthttp.NewAuthHandler(service.NewAuthService())
+	authService, err := service.NewAuthService(service.AuthTokenConfig{
+		Issuer:           os.Getenv("JWT_ISSUER"),
+		SigningKey:       os.Getenv("JWT_SIGNING_KEY"),
+		RequireStrongKey: true,
+	})
+	if err != nil {
+		log.Fatal("failed to initialize auth service", zap.Error(err))
+	}
+
+	authHandler := transporthttp.NewAuthHandler(authService)
 	authHandler.RegisterRoutes(v1)
 
 	server := app.NewServer(cfg.HTTPPort, router, log)

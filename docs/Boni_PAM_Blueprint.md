@@ -610,6 +610,7 @@ boni-pam/
 - **TASK-004: Build JWT/Refresh Token Service**  
   Description: Generate signed access tokens and rotate refresh tokens securely.  
   Module: Auth Service
+  Status: Done
 
 - **TASK-005: Session Revocation Endpoint**  
   Description: Create API to revoke all or specific sessions and invalidate refresh tokens.  
