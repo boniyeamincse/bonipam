@@ -615,6 +615,7 @@ boni-pam/
 - **TASK-005: Session Revocation Endpoint**  
   Description: Create API to revoke all or specific sessions and invalidate refresh tokens.  
   Module: Auth Service
+  Status: Done
 
 - **TASK-006: User Sync from IdP**  
   Description: Implement periodic and login-triggered synchronization of user profiles and groups.  
