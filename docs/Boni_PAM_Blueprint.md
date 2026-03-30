@@ -600,6 +600,7 @@ boni-pam/
 - **TASK-002: Add SAML SSO Adapter**  
   Description: Build SAML assertion consumer endpoint and map attributes to internal user model.  
   Module: Auth Service
+  Status: Done
 
 - **TASK-003: Implement MFA Challenge API**  
   Description: Add endpoints for TOTP/WebAuthn challenge generation and verification.  
