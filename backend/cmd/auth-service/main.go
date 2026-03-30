@@ -56,7 +56,12 @@ func main() {
 	userHandler := transporthttp.NewUserHandler(service.NewUserService())
 	userHandler.RegisterRoutes(v1)
 
-	roleHandler := transporthttp.NewRoleHandler(service.NewRoleService())
+	permissionService := service.NewPermissionService()
+	permissionHandler := transporthttp.NewPermissionHandler(permissionService)
+	permissionHandler.RegisterRoutes(v1)
+
+	roleService := service.NewRoleService()
+	roleHandler := transporthttp.NewRoleHandler(roleService, permissionService)
 	roleHandler.RegisterRoutes(v1)
 
 	intervalSeconds := envInt("IDP_SYNC_INTERVAL_SECONDS", 300)

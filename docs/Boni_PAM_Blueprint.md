@@ -635,6 +635,7 @@ boni-pam/
 - **TASK-009: Permission Catalog Service**  
   Description: Define permission model and APIs for resource-action combinations.  
   Module: User & Role Management
+  Status: Done
 
 - **TASK-010: Group-to-Role Mapping**  
   Description: Support assigning roles to external groups and reconcile membership changes.  
