@@ -153,3 +153,11 @@ type RotationResult struct {
 	RotatedAt time.Time `json:"rotated_at"`
 	ExpiresAt time.Time `json:"expires_at"`
 }
+
+// KMSAdapterInfo describes the active KMS/HSM provider configuration.
+type KMSAdapterInfo struct {
+	Provider   string `json:"provider"` // "local" | "aws-kms" | "hashicorp-vault"
+	KeyID      string `json:"key_id"`
+	KEKVersion string `json:"kek_version"`
+	Endpoint   string `json:"endpoint,omitempty"`
+}

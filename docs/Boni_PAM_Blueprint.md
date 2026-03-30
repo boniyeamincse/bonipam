@@ -715,10 +715,12 @@ boni-pam/
 - **TASK-025: KMS Integration Adapter**  
   Description: Integrate external KMS/HSM for key generation and envelope key wrapping.  
   Module: Vault Service
+  Status: Done
 
 - **TASK-026: SSH Proxy Core**  
   Description: Implement SSH bastion core for inbound user channels and outbound target sessions.  
   Module: Access Gateway
+  Status: Done
 
 - **TASK-027: Gateway Session Authorization**  
   Description: Enforce JIT grant and policy checks before session establishment.  

@@ -20,6 +20,7 @@ func (h *VaultHandler) RegisterRoutes(group *gin.RouterGroup) {
 	vault := group.Group("/vault")
 	vault.POST("/secrets", h.StoreSecret)
 	vault.GET("/secrets/:secretId", h.GetSecret)
+	vault.GET("/kms/info", h.KMSInfo)
 	vault.POST("/credentials/issue", h.IssueCredential)
 	vault.GET("/leases/:leaseId", h.GetLeaseStatus)
 	vault.POST("/leases/:leaseId/revoke", h.RevokeLease)
@@ -27,6 +28,10 @@ func (h *VaultHandler) RegisterRoutes(group *gin.RouterGroup) {
 	vault.POST("/rotation-policies", h.CreateRotationPolicy)
 	vault.GET("/rotation-policies/:policyId", h.GetRotationPolicy)
 	vault.POST("/rotation-policies/:policyId/trigger", h.TriggerRotation)
+}
+
+func (h *VaultHandler) KMSInfo(c *gin.Context) {
+	RespondOK(c, http.StatusOK, h.vaultService.KMSInfo())
 }
 
 func (h *VaultHandler) StoreSecret(c *gin.Context) {

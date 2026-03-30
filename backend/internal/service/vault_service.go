@@ -5,7 +5,6 @@ import (
 	"crypto/aes"
 	"crypto/cipher"
 	"crypto/rand"
-	"crypto/sha256"
 	"encoding/base64"
 	"fmt"
 	"io"
@@ -22,9 +21,8 @@ type VaultService struct {
 	secrets          map[string]domain.SecretRecord
 	leases           map[string]domain.CredentialLeaseRecord
 	rotationPolicies map[string]domain.RotationPolicy
-	masterKey        []byte
+	kmsProvider      KMSProvider
 	kekVersion       string
-	masterAlias      string
 }
 
 func NewVaultService(masterKey string) (*VaultService, error) {
@@ -36,14 +34,23 @@ func NewVaultService(masterKey string) (*VaultService, error) {
 		return nil, fmt.Errorf("vault master key must be at least 16 characters")
 	}
 
+	kms, err := NewLocalKMSProvider(trimmed)
+	if err != nil {
+		return nil, fmt.Errorf("failed to initialize KMS provider: %w", err)
+	}
+
 	return &VaultService{
 		secrets:          make(map[string]domain.SecretRecord),
 		leases:           make(map[string]domain.CredentialLeaseRecord),
 		rotationPolicies: make(map[string]domain.RotationPolicy),
-		masterKey:        []byte(trimmed),
+		kmsProvider:      kms,
 		kekVersion:       "v1",
-		masterAlias:      "local-kek",
 	}, nil
+}
+
+// KMSInfo returns the active KMS adapter description.
+func (s *VaultService) KMSInfo() domain.KMSAdapterInfo {
+	return s.kmsProvider.Describe()
 }
 
 func (s *VaultService) IssueCredential(req domain.IssueCredentialRequest) (domain.IssueCredentialResponse, error) {
@@ -418,7 +425,10 @@ func (s *VaultService) encryptWithEnvelope(plaintext []byte) (string, string, st
 	}
 
 	ciphertext := gcm.Seal(nil, nonce, plaintext, nil)
-	wrapped := s.wrapDEK(dek)
+	wrapped, err := s.kmsProvider.WrapKey(dek)
+	if err != nil {
+		return "", "", "", fmt.Errorf("failed to wrap data key: %w", err)
+	}
 
 	return base64.StdEncoding.EncodeToString(ciphertext),
 		base64.StdEncoding.EncodeToString(wrapped),
@@ -439,7 +449,10 @@ func (s *VaultService) decryptWithEnvelope(ciphertextB64, wrappedDEKB64, nonceB6
 		return nil, fmt.Errorf("failed to decode nonce: %w", err)
 	}
 
-	dek := s.unwrapDEK(wrappedDEK)
+	dek, err := s.kmsProvider.UnwrapKey(wrappedDEK)
+	if err != nil {
+		return nil, fmt.Errorf("failed to unwrap data key: %w", err)
+	}
 	block, err := aes.NewCipher(dek)
 	if err != nil {
 		return nil, fmt.Errorf("failed to create cipher: %w", err)
@@ -454,24 +467,6 @@ func (s *VaultService) decryptWithEnvelope(ciphertextB64, wrappedDEKB64, nonceB6
 	}
 
 	return plaintext, nil
-}
-
-func (s *VaultService) wrapDEK(dek []byte) []byte {
-	kek := sha256.Sum256(s.masterKey)
-	wrapped := make([]byte, len(dek))
-	for i := 0; i < len(dek); i++ {
-		wrapped[i] = dek[i] ^ kek[i%len(kek)]
-	}
-	return wrapped
-}
-
-func (s *VaultService) unwrapDEK(wrapped []byte) []byte {
-	kek := sha256.Sum256(s.masterKey)
-	dek := make([]byte, len(wrapped))
-	for i := 0; i < len(wrapped); i++ {
-		dek[i] = wrapped[i] ^ kek[i%len(kek)]
-	}
-	return dek
 }
 
 func isSupportedTargetType(targetType string) bool {

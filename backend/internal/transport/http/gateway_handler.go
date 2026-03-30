@@ -18,41 +18,54 @@ func NewGatewayHandler(gatewayService *service.GatewayService) *GatewayHandler {
 
 func (h *GatewayHandler) RegisterRoutes(group *gin.RouterGroup) {
 	gateway := group.Group("/gateway/sessions")
-	gateway.POST("/start", h.StartSession)
+	gateway.POST("", h.InitiateSession)
+	gateway.POST("/start", h.InitiateSession) // legacy alias
+	gateway.GET("/:sessionId", h.GetSession)
+	gateway.GET("/:sessionId/status", h.GetSession) // legacy alias
 	gateway.POST("/:sessionId/terminate", h.TerminateSession)
-	gateway.GET("/:sessionId/status", h.Status)
 }
 
-func (h *GatewayHandler) StartSession(c *gin.Context) {
-	var req domain.StartSessionRequest
+func (h *GatewayHandler) InitiateSession(c *gin.Context) {
+	var req domain.InitiateSessionRequest
 	if err := c.ShouldBindJSON(&req); err != nil {
-		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid session start payload")
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid session initiate payload")
 		return
 	}
-
-	session, err := h.gatewayService.StartSession(req)
+	session, err := h.gatewayService.InitiateSession(req)
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "SESSION_START_FAILED", err.Error())
+		status := http.StatusBadRequest
+		code := "SESSION_INITIATE_FAILED"
+		if err.Error()[:19] == "unsupported protocol" {
+			code = "UNSUPPORTED_PROTOCOL"
+		}
+		RespondError(c, status, code, err.Error())
 		return
 	}
-	RespondOK(c, http.StatusOK, session)
+	RespondOK(c, http.StatusCreated, session)
+}
+
+func (h *GatewayHandler) GetSession(c *gin.Context) {
+	result, err := h.gatewayService.GetSession(c.Param("sessionId"))
+	if err != nil {
+		RespondError(c, http.StatusNotFound, "SESSION_NOT_FOUND", err.Error())
+		return
+	}
+	RespondOK(c, http.StatusOK, result)
 }
 
 func (h *GatewayHandler) TerminateSession(c *gin.Context) {
-	sessionID := c.Param("sessionId")
-	if err := h.gatewayService.TerminateSession(sessionID); err != nil {
-		RespondError(c, http.StatusBadRequest, "SESSION_TERMINATE_FAILED", err.Error())
-		return
-	}
-	RespondOK(c, http.StatusOK, gin.H{"session_id": sessionID, "status": "terminated"})
-}
-
-func (h *GatewayHandler) Status(c *gin.Context) {
-	sessionID := c.Param("sessionId")
-	session, err := h.gatewayService.SessionStatus(sessionID)
+	var req domain.TerminateSessionRequest
+	_ = c.ShouldBindJSON(&req) // reason is optional
+	err := h.gatewayService.TerminateSession(c.Param("sessionId"), req.Reason)
 	if err != nil {
-		RespondError(c, http.StatusBadRequest, "SESSION_STATUS_FAILED", err.Error())
+		status := http.StatusBadRequest
+		code := "SESSION_TERMINATE_FAILED"
+		if err.Error() == "session not found" {
+			status = http.StatusNotFound
+			code = "SESSION_NOT_FOUND"
+		}
+		RespondError(c, status, code, err.Error())
 		return
 	}
-	RespondOK(c, http.StatusOK, session)
+	RespondOK(c, http.StatusOK, gin.H{"terminated": true})
 }
