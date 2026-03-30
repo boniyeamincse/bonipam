@@ -690,6 +690,7 @@ boni-pam/
 - **TASK-020: Asset Import Pipeline**  
   Description: Add CSV/API bulk asset import with deduplication and validation.  
   Module: Asset Management
+  Status: Done
 
 - **TASK-021: Secret Storage API**  
   Description: Create encrypted secret write/read APIs with envelope encryption.  

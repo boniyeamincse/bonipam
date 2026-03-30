@@ -99,3 +99,21 @@ type AssetAuditEvent struct {
 	Metadata  map[string]interface{} `json:"metadata,omitempty"`
 	Timestamp time.Time              `json:"timestamp"`
 }
+
+type AssetImportRequest struct {
+	Assets  []CreateAssetRequest `json:"assets"`
+	CSVData string               `json:"csv_data"`
+}
+
+type AssetImportIssue struct {
+	Index  int    `json:"index"`
+	Name   string `json:"name,omitempty"`
+	Reason string `json:"reason"`
+}
+
+type AssetImportResult struct {
+	TotalRows int                `json:"total_rows"`
+	Imported  []Asset            `json:"imported"`
+	Skipped   []AssetImportIssue `json:"skipped"`
+	Failed    []AssetImportIssue `json:"failed"`
+}

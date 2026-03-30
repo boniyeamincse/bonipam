@@ -19,6 +19,7 @@ func NewAssetHandler(assetService *service.AssetService) *AssetHandler {
 func (h *AssetHandler) RegisterRoutes(group *gin.RouterGroup) {
 	assets := group.Group("/assets")
 	assets.POST("", h.CreateAsset)
+	assets.POST("/import", h.ImportAssets)
 	assets.GET("", h.ListAssets)
 	assets.GET("/:assetId", h.GetAsset)
 	assets.PUT("/:assetId/tags", h.UpdateAssetTagging)
@@ -28,6 +29,22 @@ func (h *AssetHandler) RegisterRoutes(group *gin.RouterGroup) {
 	assets.GET("/:assetId/owner/transfers", h.ListOwnershipTransfers)
 	assets.POST("/:assetId/owner/transfers/:transferId/review", h.ReviewOwnershipTransfer)
 	assets.GET("/:assetId/audit-events", h.ListAuditEvents)
+}
+
+func (h *AssetHandler) ImportAssets(c *gin.Context) {
+	var req domain.AssetImportRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid asset import request")
+		return
+	}
+
+	result, err := h.assetService.ImportAssets(req)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "ASSET_IMPORT_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, result)
 }
 
 func (h *AssetHandler) CreateAsset(c *gin.Context) {

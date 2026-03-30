@@ -2,8 +2,12 @@ package service
 
 import (
 	"boni-pam/internal/domain"
+	"encoding/csv"
+	"encoding/json"
 	"fmt"
+	"io"
 	"sort"
+	"strconv"
 	"strings"
 	"sync"
 	"time"
@@ -355,6 +359,54 @@ func (s *AssetService) ListAssetAuditEvents(assetID string) []domain.AssetAuditE
 	return result
 }
 
+func (s *AssetService) ImportAssets(req domain.AssetImportRequest) (domain.AssetImportResult, error) {
+	rows, err := s.toImportRows(req)
+	if err != nil {
+		return domain.AssetImportResult{}, err
+	}
+	if len(rows) == 0 {
+		return domain.AssetImportResult{}, fmt.Errorf("no assets provided for import")
+	}
+
+	result := domain.AssetImportResult{
+		TotalRows: len(rows),
+		Imported:  make([]domain.Asset, 0, len(rows)),
+		Skipped:   make([]domain.AssetImportIssue, 0),
+		Failed:    make([]domain.AssetImportIssue, 0),
+	}
+
+	existingNames := s.existingAssetNames()
+	batchNames := make(map[string]struct{}, len(rows))
+
+	for idx, row := range rows {
+		normalizedName := strings.ToLower(strings.TrimSpace(row.Name))
+		if normalizedName == "" {
+			result.Failed = append(result.Failed, domain.AssetImportIssue{Index: idx, Reason: "name is required"})
+			continue
+		}
+		if _, exists := existingNames[normalizedName]; exists {
+			result.Skipped = append(result.Skipped, domain.AssetImportIssue{Index: idx, Name: row.Name, Reason: "duplicate with existing asset"})
+			continue
+		}
+		if _, exists := batchNames[normalizedName]; exists {
+			result.Skipped = append(result.Skipped, domain.AssetImportIssue{Index: idx, Name: row.Name, Reason: "duplicate within import payload"})
+			continue
+		}
+
+		asset, createErr := s.CreateAsset(row)
+		if createErr != nil {
+			result.Failed = append(result.Failed, domain.AssetImportIssue{Index: idx, Name: row.Name, Reason: createErr.Error()})
+			continue
+		}
+
+		batchNames[normalizedName] = struct{}{}
+		existingNames[normalizedName] = struct{}{}
+		result.Imported = append(result.Imported, asset)
+	}
+
+	return result, nil
+}
+
 func defaultPortForType(assetType string) int {
 	switch assetType {
 	case "ssh":
@@ -480,4 +532,123 @@ func (s *AssetService) recordAuditEventLocked(assetID, eventType, actor, message
 	}
 
 	s.auditEvents[assetID] = append(s.auditEvents[assetID], event)
+}
+
+func (s *AssetService) existingAssetNames() map[string]struct{} {
+	s.mu.RLock()
+	defer s.mu.RUnlock()
+
+	result := make(map[string]struct{}, len(s.assets))
+	for _, asset := range s.assets {
+		result[strings.ToLower(strings.TrimSpace(asset.Name))] = struct{}{}
+	}
+	return result
+}
+
+func (s *AssetService) toImportRows(req domain.AssetImportRequest) ([]domain.CreateAssetRequest, error) {
+	if len(req.Assets) > 0 {
+		return req.Assets, nil
+	}
+
+	csvData := strings.TrimSpace(req.CSVData)
+	if csvData == "" {
+		return nil, nil
+	}
+
+	reader := csv.NewReader(strings.NewReader(csvData))
+	reader.TrimLeadingSpace = true
+
+	headers, err := reader.Read()
+	if err != nil {
+		return nil, fmt.Errorf("failed to read csv header: %w", err)
+	}
+
+	col := make(map[string]int, len(headers))
+	for i, header := range headers {
+		col[strings.ToLower(strings.TrimSpace(header))] = i
+	}
+
+	required := []string{"name", "type", "host"}
+	for _, field := range required {
+		if _, ok := col[field]; !ok {
+			return nil, fmt.Errorf("csv missing required column: %s", field)
+		}
+	}
+
+	rows := make([]domain.CreateAssetRequest, 0)
+	for {
+		record, readErr := reader.Read()
+		if readErr == io.EOF {
+			break
+		}
+		if readErr != nil {
+			return nil, fmt.Errorf("failed to parse csv row: %w", readErr)
+		}
+
+		row := domain.CreateAssetRequest{
+			Name:        csvValue(record, col, "name"),
+			Type:        csvValue(record, col, "type"),
+			Host:        csvValue(record, col, "host"),
+			Environment: csvValue(record, col, "environment"),
+			Owner:       csvValue(record, col, "owner"),
+			Criticality: csvValue(record, col, "criticality"),
+			Groups:      splitGroups(csvValue(record, col, "groups")),
+		}
+
+		if portRaw := csvValue(record, col, "port"); strings.TrimSpace(portRaw) != "" {
+			parsedPort, err := strconv.Atoi(strings.TrimSpace(portRaw))
+			if err != nil {
+				return nil, fmt.Errorf("invalid port value %q", portRaw)
+			}
+			row.Port = parsedPort
+		}
+
+		metadata := make(map[string]interface{})
+		if metadataRaw := csvValue(record, col, "connection_metadata"); strings.TrimSpace(metadataRaw) != "" {
+			if err := json.Unmarshal([]byte(metadataRaw), &metadata); err != nil {
+				return nil, fmt.Errorf("invalid connection_metadata json: %w", err)
+			}
+		} else {
+			if username := csvValue(record, col, "username"); username != "" {
+				metadata["username"] = username
+			}
+			if authMethod := csvValue(record, col, "auth_method"); authMethod != "" {
+				metadata["auth_method"] = authMethod
+			}
+			if engine := csvValue(record, col, "engine"); engine != "" {
+				metadata["engine"] = engine
+			}
+			if database := csvValue(record, col, "database"); database != "" {
+				metadata["database"] = database
+			}
+		}
+
+		row.ConnectionMetadata = metadata
+		rows = append(rows, row)
+	}
+
+	return rows, nil
+}
+
+func csvValue(record []string, columns map[string]int, key string) string {
+	index, ok := columns[key]
+	if !ok || index < 0 || index >= len(record) {
+		return ""
+	}
+	return strings.TrimSpace(record[index])
+}
+
+func splitGroups(raw string) []string {
+	if strings.TrimSpace(raw) == "" {
+		return nil
+	}
+	parts := strings.Split(raw, "|")
+	result := make([]string, 0, len(parts))
+	for _, part := range parts {
+		trimmed := strings.TrimSpace(part)
+		if trimmed != "" {
+			result = append(result, trimmed)
+		}
+	}
+	return result
 }

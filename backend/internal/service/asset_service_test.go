@@ -254,3 +254,82 @@ func TestAssetService_OwnershipWorkflow(t *testing.T) {
 		t.Fatalf("expected at least 3 audit events, got %d", len(events))
 	}
 }
+
+func TestAssetService_ImportAssets(t *testing.T) {
+	s := NewAssetService()
+
+	_, err := s.CreateAsset(domain.CreateAssetRequest{
+		Name: "existing-asset",
+		Type: "ssh",
+		Host: "10.0.0.20",
+		ConnectionMetadata: map[string]interface{}{
+			"username":    "ops",
+			"auth_method": "key",
+		},
+	})
+	if err != nil {
+		t.Fatalf("seed CreateAsset returned error: %v", err)
+	}
+
+	t.Run("ImportFromAPIArray", func(t *testing.T) {
+		result, err := s.ImportAssets(domain.AssetImportRequest{
+			Assets: []domain.CreateAssetRequest{
+				{
+					Name: "existing-asset",
+					Type: "ssh",
+					Host: "10.0.0.21",
+					ConnectionMetadata: map[string]interface{}{
+						"username":    "ops",
+						"auth_method": "key",
+					},
+				},
+				{
+					Name: "new-db",
+					Type: "database",
+					Host: "db.internal",
+					ConnectionMetadata: map[string]interface{}{
+						"engine":   "postgres",
+						"database": "app",
+						"username": "db_user",
+					},
+				},
+				{
+					Name: "new-db",
+					Type: "database",
+					Host: "db2.internal",
+					ConnectionMetadata: map[string]interface{}{
+						"engine":   "postgres",
+						"database": "app2",
+						"username": "db_user2",
+					},
+				},
+			},
+		})
+		if err != nil {
+			t.Fatalf("ImportAssets(api) returned error: %v", err)
+		}
+		if len(result.Imported) != 1 {
+			t.Fatalf("expected 1 imported asset, got %d", len(result.Imported))
+		}
+		if len(result.Skipped) != 2 {
+			t.Fatalf("expected 2 skipped rows, got %d", len(result.Skipped))
+		}
+	})
+
+	t.Run("ImportFromCSV", func(t *testing.T) {
+		csvData := "name,type,host,port,environment,owner,criticality,groups,username,auth_method,engine,database\n" +
+			"csv-ssh,ssh,ssh.internal,22,prod,ops,high,linux|bastion,ec2-user,key,,\n" +
+			"csv-db,database,db.internal,5432,staging,data-team,critical,databases,db_user,,postgres,main"
+
+		result, err := s.ImportAssets(domain.AssetImportRequest{CSVData: csvData})
+		if err != nil {
+			t.Fatalf("ImportAssets(csv) returned error: %v", err)
+		}
+		if len(result.Imported) != 2 {
+			t.Fatalf("expected 2 imported csv assets, got %d", len(result.Imported))
+		}
+		if result.TotalRows != 2 {
+			t.Fatalf("expected total rows 2, got %d", result.TotalRows)
+		}
+	})
+}
