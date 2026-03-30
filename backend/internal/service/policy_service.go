@@ -21,13 +21,17 @@ import (
 var schemaFiles embed.FS
 
 type PolicyService struct {
-	mu       sync.RWMutex
-	policies map[uuid.UUID]domain.Policy
+	mu        sync.RWMutex
+	policies  map[uuid.UUID]domain.Policy
+	versions  map[uuid.UUID]map[int]domain.PolicyDefinition
+	published map[uuid.UUID]int
 }
 
 func NewPolicyService() *PolicyService {
 	return &PolicyService{
-		policies: make(map[uuid.UUID]domain.Policy),
+		policies:  make(map[uuid.UUID]domain.Policy),
+		versions:  make(map[uuid.UUID]map[int]domain.PolicyDefinition),
+		published: make(map[uuid.UUID]int),
 	}
 }
 
@@ -70,6 +74,7 @@ func (s *PolicyService) CreatePolicy(ctx context.Context, req domain.CreatePolic
 	}
 
 	s.policies[policy.ID] = policy
+	s.versions[policy.ID] = map[int]domain.PolicyDefinition{1: policy.Definition}
 	return policy, nil
 }
 
@@ -141,10 +146,93 @@ func (s *PolicyService) UpdatePolicy(ctx context.Context, policyID string, req d
 		}
 		policy.Definition = *req.Definition
 		policy.Version++
+		policy.Status = domain.PolicyStatusDraft
+		policy.PublishedAt = nil
+		if s.versions[id] == nil {
+			s.versions[id] = make(map[int]domain.PolicyDefinition)
+		}
+		s.versions[id][policy.Version] = policy.Definition
 	}
 
 	s.policies[id] = policy
 	s.mu.Unlock()
+
+	return policy, nil
+}
+
+func (s *PolicyService) PublishPolicy(policyID string) (domain.PublishPolicyResponse, error) {
+	id, err := uuid.Parse(strings.TrimSpace(policyID))
+	if err != nil {
+		return domain.PublishPolicyResponse{}, fmt.Errorf("invalid policy id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	policy, ok := s.policies[id]
+	if !ok {
+		return domain.PublishPolicyResponse{}, fmt.Errorf("policy not found")
+	}
+
+	now := time.Now().UTC()
+	policy.Status = domain.PolicyStatusPublished
+	policy.PublishedAt = &now
+	s.policies[id] = policy
+	s.published[id] = policy.Version
+
+	return domain.PublishPolicyResponse{
+		PolicyID:    policy.ID,
+		Version:     policy.Version,
+		Status:      policy.Status,
+		PublishedAt: now,
+	}, nil
+}
+
+func (s *PolicyService) RollbackPolicy(ctx context.Context, policyID string, targetVersion int) (domain.Policy, error) {
+	_ = ctx
+
+	id, err := uuid.Parse(strings.TrimSpace(policyID))
+	if err != nil {
+		return domain.Policy{}, fmt.Errorf("invalid policy id")
+	}
+
+	s.mu.Lock()
+	defer s.mu.Unlock()
+
+	policy, ok := s.policies[id]
+	if !ok {
+		return domain.Policy{}, fmt.Errorf("policy not found")
+	}
+
+	availableVersions := s.versions[id]
+	if len(availableVersions) == 0 {
+		return domain.Policy{}, fmt.Errorf("no policy versions available for rollback")
+	}
+
+	if targetVersion <= 0 {
+		targetVersion = s.previousVersion(policy.ID, policy.Version)
+		if targetVersion == 0 {
+			return domain.Policy{}, fmt.Errorf("no previous version available for rollback")
+		}
+	}
+
+	definition, ok := availableVersions[targetVersion]
+	if !ok {
+		return domain.Policy{}, fmt.Errorf("target version not found")
+	}
+
+	policy.Definition = definition
+	policy.Version++
+	now := time.Now().UTC()
+	policy.Status = domain.PolicyStatusPublished
+	policy.PublishedAt = &now
+
+	if s.versions[id] == nil {
+		s.versions[id] = make(map[int]domain.PolicyDefinition)
+	}
+	s.versions[id][policy.Version] = policy.Definition
+	s.published[id] = policy.Version
+	s.policies[id] = policy
 
 	return policy, nil
 }
@@ -461,4 +549,20 @@ func toInterfaceSlice(value interface{}) ([]interface{}, bool) {
 	}
 
 	return result, true
+}
+
+func (s *PolicyService) previousVersion(policyID uuid.UUID, currentVersion int) int {
+	available := s.versions[policyID]
+	if len(available) == 0 {
+		return 0
+	}
+
+	best := 0
+	for version := range available {
+		if version < currentVersion && version > best {
+			best = version
+		}
+	}
+
+	return best
 }

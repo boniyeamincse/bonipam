@@ -22,6 +22,8 @@ func (h *PolicyHandler) RegisterRoutes(group *gin.RouterGroup) {
 	policies.GET("", h.ListPolicies)
 	policies.GET("/:policyId", h.GetPolicy)
 	policies.PUT("/:policyId", h.UpdatePolicy)
+	policies.POST("/:policyId/publish", h.PublishPolicy)
+	policies.POST("/:policyId/rollback", h.RollbackPolicy)
 	policies.POST("/:policyId/evaluate", h.EvaluatePolicy)
 }
 
@@ -85,4 +87,30 @@ func (h *PolicyHandler) EvaluatePolicy(c *gin.Context) {
 	}
 
 	RespondOK(c, http.StatusOK, result)
+}
+
+func (h *PolicyHandler) PublishPolicy(c *gin.Context) {
+	result, err := h.policyService.PublishPolicy(c.Param("policyId"))
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "POLICY_PUBLISH_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, result)
+}
+
+func (h *PolicyHandler) RollbackPolicy(c *gin.Context) {
+	var req domain.RollbackPolicyRequest
+	if err := c.ShouldBindJSON(&req); err != nil {
+		RespondError(c, http.StatusBadRequest, "BAD_REQUEST", "invalid rollback request")
+		return
+	}
+
+	policy, err := h.policyService.RollbackPolicy(c.Request.Context(), c.Param("policyId"), req.TargetVersion)
+	if err != nil {
+		RespondError(c, http.StatusBadRequest, "POLICY_ROLLBACK_FAILED", err.Error())
+		return
+	}
+
+	RespondOK(c, http.StatusOK, policy)
 }

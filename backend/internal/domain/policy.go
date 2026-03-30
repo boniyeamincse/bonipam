@@ -77,3 +77,14 @@ type PolicyEvaluationResponse struct {
 	Obligations   []string  `json:"obligations,omitempty"`
 	MatchedRuleID []string  `json:"matched_rule_ids,omitempty"`
 }
+
+type PublishPolicyResponse struct {
+	PolicyID    uuid.UUID    `json:"policy_id"`
+	Version     int          `json:"version"`
+	Status      PolicyStatus `json:"status"`
+	PublishedAt time.Time    `json:"published_at"`
+}
+
+type RollbackPolicyRequest struct {
+	TargetVersion int `json:"target_version"`
+}

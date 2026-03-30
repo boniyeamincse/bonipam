@@ -660,6 +660,7 @@ boni-pam/
 - **TASK-014: Policy Version Publish Workflow**  
   Description: Add draft, publish, rollback mechanics for policy deployment.  
   Module: Policy Engine
+  Status: Done
 
 - **TASK-015: Context Attribute Resolver**  
   Description: Resolve runtime attributes (device, IP, time, risk) for ABAC checks.  

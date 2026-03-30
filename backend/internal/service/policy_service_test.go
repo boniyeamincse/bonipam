@@ -174,3 +174,57 @@ func TestPolicyService_EvaluatePolicy(t *testing.T) {
 		}
 	})
 }
+
+func TestPolicyService_PublishAndRollback(t *testing.T) {
+	s := NewPolicyService()
+	ctx := context.Background()
+
+	created, err := s.CreatePolicy(ctx, domain.CreatePolicyRequest{
+		Name: "publish-rollback",
+		Definition: domain.PolicyDefinition{
+			SchemaVersion: "1.0",
+			DefaultEffect: "deny",
+			Rules: []domain.PolicyRule{
+				{Effect: "allow", Subjects: []string{"role:admin"}, Resources: []string{"asset:*"}, Actions: []string{"ssh.connect"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("CreatePolicy returned error: %v", err)
+	}
+
+	publishResult, err := s.PublishPolicy(created.ID.String())
+	if err != nil {
+		t.Fatalf("PublishPolicy returned error: %v", err)
+	}
+	if publishResult.Status != domain.PolicyStatusPublished {
+		t.Fatalf("expected published status, got %s", publishResult.Status)
+	}
+
+	updated, err := s.UpdatePolicy(ctx, created.ID.String(), domain.UpdatePolicyRequest{
+		Definition: &domain.PolicyDefinition{
+			SchemaVersion: "1.0",
+			DefaultEffect: "allow",
+			Rules: []domain.PolicyRule{
+				{Effect: "allow", Subjects: []string{"role:*"}, Resources: []string{"asset:*"}, Actions: []string{"ssh.connect"}},
+			},
+		},
+	})
+	if err != nil {
+		t.Fatalf("UpdatePolicy returned error: %v", err)
+	}
+	if updated.Status != domain.PolicyStatusDraft {
+		t.Fatalf("expected draft status after update, got %s", updated.Status)
+	}
+
+	rolledBack, err := s.RollbackPolicy(ctx, created.ID.String(), 1)
+	if err != nil {
+		t.Fatalf("RollbackPolicy returned error: %v", err)
+	}
+	if rolledBack.Status != domain.PolicyStatusPublished {
+		t.Fatalf("expected published status after rollback, got %s", rolledBack.Status)
+	}
+	if rolledBack.Definition.DefaultEffect != "deny" {
+		t.Fatalf("expected rollback to version 1 definition, got default_effect=%s", rolledBack.Definition.DefaultEffect)
+	}
+}
