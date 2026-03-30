@@ -630,6 +630,7 @@ boni-pam/
 - **TASK-008: Role CRUD APIs**  
   Description: Build endpoints for role create/read/update/delete with validation.  
   Module: User & Role Management
+  Status: Done
 
 - **TASK-009: Permission Catalog Service**  
   Description: Define permission model and APIs for resource-action combinations.  
